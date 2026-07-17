@@ -1,4 +1,5 @@
 import type { SafetyAssessment, SafetyTier, Synthesis } from "./types";
+import { MIRROR_READY_MARKER } from "./types";
 
 /*
   Offline fallbacks so the prototype never hard-crashes without Azure creds.
@@ -24,28 +25,55 @@ const FIT_PROMPTS = [
 
 const SPARK_SIGNALS = ["hard to start", "ask me", "how does this", "not sure what"];
 
+/**
+ * Offline stand-in for the model's readiness judgment. Without the LLM we can't
+ * truly assess depth, so we approximate "sufficient depth" the same way the
+ * prompt frames it: enough turns AND enough substance to synthesize without
+ * guessing. Deliberately conservative so short conversations stay in Phase 1.
+ */
+function fallbackReadyForMirror(userTexts: string[]): boolean {
+  const meaningful = userTexts.filter((t) => t.trim().length > 0);
+  if (meaningful.length < 3) return false;
+
+  // A spark-chip signal (e.g. "it's hard to start") isn't real depth.
+  const last = (meaningful[meaningful.length - 1] || "").toLowerCase();
+  if (SPARK_SIGNALS.some((s) => last.includes(s))) return false;
+
+  const totalWords = meaningful.reduce(
+    (n, t) => n + t.trim().split(/\s+/).filter(Boolean).length,
+    0,
+  );
+  // Roughly a few substantive sentences across the conversation.
+  return totalWords >= 40;
+}
+
 export function fallbackCompanionReply(userTexts: string[]): string {
   const last = (userTexts[userTexts.length - 1] || "").toLowerCase();
   const turn = userTexts.length;
 
+  let reply: string;
   if (SPARK_SIGNALS.some((s) => last.includes(s))) {
-    return "That's okay — most people don't quite know where to begin. There's no wrong way in. We could start small: what's today been like for you?";
+    reply =
+      "That's okay — most people don't quite know where to begin. There's no wrong way in. We could start small: what's today been like for you?";
+  } else if (turn <= 1) {
+    // Movement one — help them feel heard.
+    reply =
+      "Thank you for saying that — it takes something to put it into words. I'm here, and there's no rush. What feels most tangled up in it right now?";
+  } else if (turn === 2) {
+    reply =
+      "That makes a lot of sense. It sounds like there's real weight in what you're describing. What part of it feels heaviest?";
+  } else {
+    // Movement two — once they've opened up, let the same conversation drift toward what kind
+    // of support would help, grown from what they've shared. Never announced, never a list.
+    reply = FIT_PROMPTS[turn - 3] ?? GENTLE_PROMPTS[turn % GENTLE_PROMPTS.length];
   }
 
-  // Movement one — help them feel heard.
-  if (turn <= 1) {
-    return "Thank you for saying that — it takes something to put it into words. I'm here, and there's no rush. What feels most tangled up in it right now?";
+  // Append the model-driven readiness signal when depth is sufficient, mirroring
+  // how the live model emits the marker on its own final line.
+  if (fallbackReadyForMirror(userTexts)) {
+    return `${reply}\n${MIRROR_READY_MARKER}`;
   }
-  if (turn === 2) {
-    return "That makes a lot of sense. It sounds like there's real weight in what you're describing. What part of it feels heaviest?";
-  }
-
-  // Movement two — once they've opened up, let the same conversation drift toward what kind
-  // of support would help, grown from what they've shared. Never announced, never a list.
-  const fit = FIT_PROMPTS[turn - 3];
-  if (fit) return fit;
-
-  return GENTLE_PROMPTS[turn % GENTLE_PROMPTS.length];
+  return reply;
 }
 
 // ---- Safety -----------------------------------------------------------------
