@@ -6,13 +6,6 @@ export interface SparkChip {
   signal: string;
 }
 
-/** The AI speaks first. Static so it appears instantly and breaks the blank-screen freeze. */
-export const OPENING_LINES: string[] = [
-  "I'm Huey, your Headway companion. I'm really glad you're here — that first step is often the hardest one.",
-  "There are no forms or checkboxes here — I'd just like to understand you a little first, in your own words.",
-  "Whatever's on your mind — a feeling, a situation, something from today — you can just start there. There's no right way to do this.",
-];
-
 /** Tapping a chip sends a gentle signal that summons more companionship. */
 export const SPARK_CHIPS: SparkChip[] = [
   { label: "It's hard to start", signal: "It's hard to start." },

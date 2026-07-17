@@ -46,7 +46,9 @@ export function Conversation({
   // message at the top of a tall viewport. Flips to the growing transcript once
   // the conversation begins.
   const isWelcome = userTurnCount === 0 && !composerDisabled;
-  const showChips = isWelcome;
+  // Hold the chips back until Huey's greeting has finished streaming, so they
+  // don't appear before the person has even been welcomed.
+  const showChips = isWelcome && !streaming;
 
   useEffect(() => {
     function updateStickiness() {

@@ -2,10 +2,12 @@ import { streamText, type ModelMessage } from "ai";
 import { getModel, hasAzureCreds } from "@/lib/azure";
 import {
   COMPANION_SYSTEM,
+  COMPANION_GREETING,
   COMPANION_FIT_NUDGE,
   FIT_NUDGE_AFTER_USER_TURNS,
+  GREETING_TRIGGER,
 } from "@/lib/prompts";
-import { fallbackCompanionReply } from "@/lib/fallback";
+import { fallbackCompanionReply, fallbackOpening } from "@/lib/fallback";
 
 export const maxDuration = 30;
 
@@ -41,23 +43,33 @@ export async function POST(req: Request): Promise<Response> {
     messages = [];
   }
 
+  // The very first exchange has no prior messages: Huey opens the conversation.
+  // The greeting is generated live (via COMPANION_GREETING) so it feels human and
+  // varies each visit, instead of a canned line.
+  const isOpening = messages.length === 0;
+
   if (!hasAzureCreds()) {
+    if (isOpening) return streamStringResponse(fallbackOpening());
     const userTexts = messages.filter((m) => m.role === "user").map((m) => m.text);
     return streamStringResponse(fallbackCompanionReply(userTexts));
   }
 
   try {
-    const modelMessages: ModelMessage[] = messages.map((m) => ({
-      role: m.role,
-      content: m.text,
-    }));
+    const modelMessages: ModelMessage[] = isOpening
+      ? [{ role: "user", content: GREETING_TRIGGER }]
+      : messages.map((m) => ({
+          role: m.role,
+          content: m.text,
+        }));
 
-    // Hybrid transition: once the person has opened up for a bit, append a hidden
-    // nudge so the same conversation can drift toward what kind of support would help.
-    // This is invisible to the person and never rendered as a step.
+    // Opening turn: hand the model the greeting instruction. Otherwise, once the
+    // person has opened up for a bit, append a hidden nudge so the same
+    // conversation can drift toward what kind of support would help. Both are
+    // invisible to the person and never rendered as a step.
     const userTurns = messages.filter((m) => m.role === "user").length;
-    const system =
-      userTurns >= FIT_NUDGE_AFTER_USER_TURNS
+    const system = isOpening
+      ? `${COMPANION_SYSTEM}\n\n${COMPANION_GREETING}`
+      : userTurns >= FIT_NUDGE_AFTER_USER_TURNS
         ? `${COMPANION_SYSTEM}\n\n${COMPANION_FIT_NUDGE}`
         : COMPANION_SYSTEM;
 
@@ -71,6 +83,7 @@ export async function POST(req: Request): Promise<Response> {
     return result.toTextStreamResponse();
   } catch (err) {
     console.error("[/api/chat] falling back:", err);
+    if (isOpening) return streamStringResponse(fallbackOpening());
     const userTexts = messages.filter((m) => m.role === "user").map((m) => m.text);
     return streamStringResponse(fallbackCompanionReply(userTexts));
   }
