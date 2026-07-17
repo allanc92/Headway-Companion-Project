@@ -187,15 +187,38 @@ const THEME_MAP: { key: string[]; focus: string; title: string; desc: string }[]
   { key: ["family", "mom", "dad", "parent", "sibling", "kids", "children"], focus: "family", title: "Untangling family dynamics", desc: "You want help with the relationships you were raised in or are raising." },
 ];
 
+// Parse the "Speaker: ..." transcript into whole turns. buildTranscript only
+// prefixes the FIRST physical line of a message, so a Shift+Enter continuation
+// line arrives without a "Person:"/"Companion:" marker; we attach such lines to
+// the current turn instead of dropping them, keeping multi-line messages intact
+// for the keyword, spectrum, and quote heuristics below.
+type TranscriptTurn = { speaker: "person" | "companion"; text: string };
+
+function parseTurns(transcript: string): TranscriptTurn[] {
+  const turns: TranscriptTurn[] = [];
+  for (const line of transcript.split("\n")) {
+    const m = /^\s*(Person|Companion):\s?(.*)$/i.exec(line);
+    if (m) {
+      turns.push({ speaker: /^person$/i.test(m[1]) ? "person" : "companion", text: m[2] });
+    } else if (turns.length) {
+      turns[turns.length - 1].text += "\n" + line;
+    }
+  }
+  return turns;
+}
+
+/** The person's own turns (continuation lines included, newlines preserved). */
+function personTurns(transcript: string): string[] {
+  return parseTurns(transcript)
+    .filter((t) => t.speaker === "person")
+    .map((t) => t.text);
+}
+
 function pickQuote(transcript: string, keys: string[]): string {
   // Draw the quote only from the person's own turns, never the companion's, so
   // the "in your words" source line can't accidentally surface Huey's copy.
-  const personLines = transcript
-    .split(/\n+/)
-    .filter((line) => /^\s*Person:/i.test(line))
-    .map((line) => line.replace(/^\s*Person:\s*/i, ""));
-  for (const line of personLines) {
-    for (const s of line.split(/(?<=[.!?])\s+/)) {
+  for (const turn of personTurns(transcript)) {
+    for (const s of turn.split(/(?<=[.!?])\s+|\n+/)) {
       const low = s.toLowerCase();
       if (keys.some((k) => low.includes(k))) {
         const cleaned = s.trim();
@@ -210,15 +233,11 @@ function truncate(s: string, n: number): string {
   return s.length > n ? s.slice(0, n - 1).trimEnd() + "…" : s;
 }
 
-// Person-only text (the transcript marks user turns "Person:"), so fit-preference
-// keyword checks never accidentally match the companion's own fit questions.
+// Person-only text (continuation lines of multi-line messages included), so
+// fit-preference keyword checks see everything the person said and never match
+// the companion's own fit questions. Whitespace collapses for clean matching.
 function personText(transcript: string): string {
-  return transcript
-    .split(/\n+/)
-    .filter((line) => /^\s*Person:/i.test(line))
-    .map((line) => line.replace(/^\s*Person:\s*/i, ""))
-    .join(" ")
-    .toLowerCase();
+  return personTurns(transcript).join(" ").replace(/\s+/g, " ").toLowerCase();
 }
 
 /**
@@ -345,21 +364,20 @@ const REFINE_REMOVAL_RE =
 
 // Contrast/replacement boundaries: a correction like "not anxiety, it's really work
 // burnout" or "not anxiety but burnout" / "drop anxiety and add burnout" pivots at a
-// comma, "it's", "but", or an "and <verb>" hand-off, so we evaluate removal per clause
-// rather than letting an earlier "not"/"drop" bleed onto the replacement named later.
-// Plain "and <noun>" is left intact so conjoined removals ("get rid of anxiety and
-// depression") still drop both.
+// comma, newline, "it's", "but", or an "and <verb>" hand-off, so we evaluate removal
+// per clause rather than letting an earlier "not"/"drop" bleed onto the replacement
+// named later. A Shift+Enter newline counts too, so "remove anxiety\nadd burnout"
+// splits. Plain "and <noun>" is left intact so conjoined removals ("get rid of
+// anxiety and depression") still drop both.
 const REFINE_CLAUSE_RE =
-  /[,;]|\bit'?s\b|\bit is\b|\binstead\b|\brather\b|\bbut\b|\bplus\b|\band\b(?=\s+(?:add|also|include|want|keep|drop|remove|delete|get\s+rid|take\s+out|nix|forget|scratch|lose|ditch))/;
+  /[,;\n]|\bit'?s\b|\bit is\b|\binstead\b|\brather\b|\bbut\b|\bplus\b|\band\b(?=\s+(?:add|also|include|want|keep|drop|remove|delete|get\s+rid|take\s+out|nix|forget|scratch|lose|ditch))/;
 
-/** The person's most recent turn (their correction), lowercased. */
+/** The person's most recent turn (their correction), lowercased; newlines kept so
+ *  REFINE_CLAUSE_RE can still split a multi-line correction into clauses. */
 function latestPersonTurn(transcript: string): string {
-  const lines = transcript.split(/\n+/).filter((l) => /^\s*Person:/i.test(l));
-  const last = lines[lines.length - 1] ?? "";
-  return last
-    .replace(/^\s*Person:\s*/i, "")
-    .trim()
-    .toLowerCase();
+  const turns = personTurns(transcript);
+  const last = turns[turns.length - 1] ?? "";
+  return last.trim().toLowerCase();
 }
 
 // True when the clause naming the keyword also carries a removal/negation cue — e.g.
