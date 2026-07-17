@@ -3,6 +3,7 @@
 import { useCallback, useRef, useState } from "react";
 import { OPENING_LINES } from "@/lib/copy";
 import { MIRROR_READY_MARKER } from "@/lib/types";
+import { mirrorSafetyNet } from "@/lib/signal";
 import type { ChatMessage } from "@/lib/types";
 
 let counter = 0;
@@ -101,7 +102,14 @@ export function useCompanionChat() {
             ),
           );
         }
-        if (finalReady || sawReady) setReady(true);
+        // Primary signal: the model appends the readiness marker when it judges the
+        // conversation is deep enough for the Mirror. Safety net: if it never does but
+        // the conversation has run enough substantive turns, force the transition so it
+        // can't circle forever.
+        const userTexts = convo
+          .filter((m) => m.role === "user")
+          .map((m) => m.text);
+        if (finalReady || sawReady || mirrorSafetyNet(userTexts)) setReady(true);
       } catch {
         commit((prev) =>
           prev.map((m) =>

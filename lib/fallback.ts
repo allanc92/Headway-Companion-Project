@@ -1,5 +1,6 @@
 import type { SafetyAssessment, SafetyTier, Synthesis } from "./types";
 import { MIRROR_READY_MARKER } from "./types";
+import { SPARK_SIGNALS, isSpark, substantiveTurns, countWords } from "./signal";
 
 /*
   Offline fallbacks so the prototype never hard-crashes without Azure creds.
@@ -24,7 +25,8 @@ const FIT_PROMPTS = [
 ];
 
 // Each spark chip gets its own reply so tapping different chips doesn't return
-// the same stale line. Keyed by a substring found in that chip's signal text.
+// the same stale line. Keyed by a substring found in that chip's signal text
+// (the same SPARK_SIGNALS the shared signal helpers match on).
 const SPARK_REPLIES: Record<string, string> = {
   "hard to start":
     "That's okay — beginning is often the hardest part, and there's no wrong way in. We don't have to name anything big; even a word or two about how you're feeling right now is more than enough.",
@@ -35,20 +37,6 @@ const SPARK_REPLIES: Record<string, string> = {
   "not sure what":
     "That's completely okay — you really don't need to have it figured out. Most people arrive not quite knowing. If we just talk about what's going on for you, the part about what you need tends to surface on its own.",
 };
-
-const SPARK_SIGNALS = Object.keys(SPARK_REPLIES);
-
-function isSpark(text: string): boolean {
-  const t = text.toLowerCase();
-  return SPARK_SIGNALS.some((s) => t.includes(s));
-}
-
-// The turns that actually move the conversation forward: non-empty and not a
-// "help me start" spark. Fit progress and readiness derive from THESE, not the
-// raw turn count, so a spark turn never skips a fit prompt or fakes depth.
-function substantiveTurns(userTexts: string[]): string[] {
-  return userTexts.filter((t) => t.trim().length > 0 && !isSpark(t));
-}
 
 /**
  * Offline stand-in for the model's readiness judgment. Without the LLM we can't
@@ -68,12 +56,8 @@ function fallbackReadyForMirror(userTexts: string[]): boolean {
   // with no support-preference signal for synthesis to reflect.
   if (substantive.length < 4) return false;
 
-  const totalWords = substantive.reduce(
-    (n, t) => n + t.trim().split(/\s+/).filter(Boolean).length,
-    0,
-  );
   // Roughly a few substantive sentences across the conversation.
-  return totalWords >= 40;
+  return countWords(substantive) >= 40;
 }
 
 export function fallbackCompanionReply(userTexts: string[]): string {

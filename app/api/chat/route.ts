@@ -1,11 +1,8 @@
 import { streamText, type ModelMessage } from "ai";
 import { getModel, hasAzureCreds } from "@/lib/azure";
-import {
-  COMPANION_SYSTEM,
-  COMPANION_FIT_NUDGE,
-  FIT_NUDGE_AFTER_USER_TURNS,
-} from "@/lib/prompts";
+import { COMPANION_SYSTEM, COMPANION_FIT_NUDGE } from "@/lib/prompts";
 import { fallbackCompanionReply } from "@/lib/fallback";
+import { fitNudgeSafetyNet } from "@/lib/signal";
 
 export const maxDuration = 30;
 
@@ -52,14 +49,16 @@ export async function POST(req: Request): Promise<Response> {
       content: m.text,
     }));
 
-    // Hybrid transition: once the person has opened up for a bit, append a hidden
-    // nudge so the same conversation can drift toward what kind of support would help.
-    // This is invisible to the person and never rendered as a step.
-    const userTurns = messages.filter((m) => m.role === "user").length;
-    const system =
-      userTurns >= FIT_NUDGE_AFTER_USER_TURNS
-        ? `${COMPANION_SYSTEM}\n\n${COMPANION_FIT_NUDGE}`
-        : COMPANION_SYSTEM;
+    // The transition toward fit is the model's own judgement call (see PHASE
+    // DISCIPLINE in COMPANION_SYSTEM): it softens the conversation toward what kind
+    // of support would help once it reads that the person feels heard. This hidden
+    // nudge is only a SAFETY NET — if the model is still circling in "feeling heard"
+    // after several substantive turns, we slip it in to gently break the loop. It is
+    // invisible to the person and never rendered as a step.
+    const userTexts = messages.filter((m) => m.role === "user").map((m) => m.text);
+    const system = fitNudgeSafetyNet(userTexts)
+      ? `${COMPANION_SYSTEM}\n\n${COMPANION_FIT_NUDGE}`
+      : COMPANION_SYSTEM;
 
     const result = streamText({
       model: getModel(),
