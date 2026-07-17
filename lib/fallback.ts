@@ -188,12 +188,19 @@ const THEME_MAP: { key: string[]; focus: string; title: string; desc: string }[]
 ];
 
 function pickQuote(transcript: string, keys: string[]): string {
-  const sentences = transcript.split(/(?<=[.!?])\s+|\n+/);
-  for (const s of sentences) {
-    const low = s.toLowerCase();
-    if (keys.some((k) => low.includes(k))) {
-      const cleaned = s.replace(/^Person:\s*/i, "").trim();
-      if (cleaned.length > 4) return truncate(cleaned, 90);
+  // Draw the quote only from the person's own turns, never the companion's, so
+  // the "in your words" source line can't accidentally surface Huey's copy.
+  const personLines = transcript
+    .split(/\n+/)
+    .filter((line) => /^\s*Person:/i.test(line))
+    .map((line) => line.replace(/^\s*Person:\s*/i, ""));
+  for (const line of personLines) {
+    for (const s of line.split(/(?<=[.!?])\s+/)) {
+      const low = s.toLowerCase();
+      if (keys.some((k) => low.includes(k))) {
+        const cleaned = s.trim();
+        if (cleaned.length > 4) return truncate(cleaned, 90);
+      }
     }
   }
   return "";
@@ -293,8 +300,11 @@ function deriveSpectrums(
 }
 
 export function fallbackSynthesis(transcript: string): Synthesis {
-  const low = transcript.toLowerCase();
-  const matched = THEME_MAP.filter((t) => t.key.some((k) => low.includes(k)));
+  // Match themes against only the person's words. The transcript also carries the
+  // companion's turns (e.g. the handoff line, which says "changed"), and those
+  // must never inject a theme the person never actually raised.
+  const personLow = personText(transcript);
+  const matched = THEME_MAP.filter((t) => t.key.some((k) => personLow.includes(k)));
   const chosen = (matched.length ? matched : [THEME_MAP[1], THEME_MAP[7]]).slice(0, 4);
 
   const fit = deriveSpectrums(transcript);
