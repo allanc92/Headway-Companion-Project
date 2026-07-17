@@ -70,6 +70,12 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
   const [helpOpen, setHelpOpen] = useState(false);
   const shownTierRef = useRef<SafetyTier>(0);
 
+  // True while /api/safety is still classifying the latest user turn. The Mirror
+  // transition must wait on this: the mechanical mirrorSafetyNet backstop can set
+  // `ready` before the safety tier lands, so without this gate a slow safety call
+  // could let goToMirror() advance mid-crisis.
+  const [safetyPending, setSafetyPending] = useState(false);
+
   const transitionedRef = useRef(false);
 
   useEffect(() => {
@@ -111,10 +117,13 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
       }
     } catch {
       /* fail open — never block the person */
+    } finally {
+      setSafetyPending(false);
     }
   }
 
   function handleSend(text: string) {
+    setSafetyPending(true);
     chat.send(text);
     runSafety(text);
   }
@@ -171,6 +180,9 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
     if (stage !== "conversation") return;
     if (!chat.ready || chat.status !== "idle") return;
     if (helpOpen) return;
+    // Hold the transition until the latest turn's safety check settles, so a slow
+    // classification can't let the backstop advance before a crisis tier is flagged.
+    if (safetyPending) return;
     const lastMessage = chat.messages[chat.messages.length - 1];
     if (lastMessage?.role === "assistant" && lastMessage.safetyTier) return;
 
@@ -180,7 +192,7 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
     }, READINESS_TRANSITION_MS);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chat.ready, chat.status, stage, helpOpen, chat.messages]);
+  }, [chat.ready, chat.status, stage, helpOpen, safetyPending, chat.messages]);
 
   async function findMatches() {
     if (priorities.length === 0) return;
