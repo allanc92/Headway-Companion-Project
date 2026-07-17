@@ -8,19 +8,24 @@
 // primary trigger. Turns are counted by substance (empty replies and "help me start"
 // chip taps don't count), so the backstop tracks real exchanges, not stalling.
 
+import { SPARK_CHIPS } from "./copy";
+
 // Spark chips are the "help me start" on-ramps a person taps when they're stuck
-// (e.g. "it's hard to start", "could you ask me something?"). They're an invitation
-// for help beginning, not substantive sharing, so they never count as a real turn.
-export const SPARK_SIGNALS = [
-  "hard to start",
-  "ask me",
-  "how does this",
-  "not sure what",
-] as const;
+// (e.g. "It's hard to start", "Could you ask me something to help me begin?").
+// They're an invitation for help beginning, not substantive sharing, so they never
+// count as a real turn.
+//
+// Tapping a chip sends its EXACT signal text (see SPARK_CHIPS in ./copy), so we
+// detect a spark by exact match, never by substring. Substring matching would drop
+// genuine messages that merely contain a chip phrase -- e.g. "I'm not sure what I
+// need from therapy, but ..." or "my partner doesn't ask me ..." -- as non-
+// substantive, starving the fit and Mirror safety nets below of real turns.
+const SPARK_TAP_TEXTS: ReadonlySet<string> = new Set(
+  SPARK_CHIPS.map((chip) => chip.signal.trim().toLowerCase()),
+);
 
 export function isSpark(text: string): boolean {
-  const t = text.toLowerCase();
-  return SPARK_SIGNALS.some((s) => t.includes(s));
+  return SPARK_TAP_TEXTS.has(text.trim().toLowerCase());
 }
 
 /** Turns that actually move the conversation forward: non-empty and not a spark. */
@@ -67,4 +72,3 @@ export function fitNudgeSafetyNet(userTexts: string[]): boolean {
 export function mirrorSafetyNet(userTexts: string[]): boolean {
   return substantiveTurns(userTexts).length >= MIRROR_SAFETY_NET_TURNS;
 }
-

@@ -1,6 +1,6 @@
 import type { SafetyAssessment, SafetyTier, Synthesis } from "./types";
 import { MIRROR_READY_MARKER } from "./types";
-import { SPARK_SIGNALS, isSpark, substantiveTurns, countWords } from "./signal";
+import { isSpark, substantiveTurns, countWords } from "./signal";
 
 /*
   Offline fallbacks so the prototype never hard-crashes without Azure creds.
@@ -24,17 +24,17 @@ const FIT_PROMPTS = [
   "That's really helpful to know. Is there anything else that would help you feel at ease with the person you talk to?",
 ];
 
-// Each spark chip gets its own reply so tapping different chips doesn't return
-// the same stale line. Keyed by a substring found in that chip's signal text
-// (the same SPARK_SIGNALS the shared signal helpers match on).
+// Each spark chip gets its own reply so tapping different chips doesn't return the
+// same stale line. Keyed by the chip's exact signal text, lowercased -- the same
+// value isSpark matches on (see SPARK_CHIPS in ./copy).
 const SPARK_REPLIES: Record<string, string> = {
-  "hard to start":
+  "it's hard to start.":
     "That's okay — beginning is often the hardest part, and there's no wrong way in. We don't have to name anything big; even a word or two about how you're feeling right now is more than enough.",
-  "ask me":
+  "could you ask me something to help me begin?":
     "Of course. Here's a gentle one, and you can answer however feels right: what's been taking up the most space in your mind lately?",
-  "how does this":
+  "how does this work?":
     "It's simpler than it might look — this is just a space to talk. No forms, no checkboxes. You share whatever's on your mind, I listen and reflect it back, and together we get a clearer sense of what might help. You lead, I'll follow.",
-  "not sure what":
+  "i'm not sure what i need yet.":
     "That's completely okay — you really don't need to have it figured out. Most people arrive not quite knowing. If we just talk about what's going on for you, the part about what you need tends to surface on its own.",
 };
 
@@ -82,9 +82,9 @@ export function fallbackCompanionReply(userTexts: string[]): string {
   let reply: string;
   if (isSpark(last)) {
     // Meet a stuck signal with its own per-chip on-ramp; don't advance fit progress.
-    const lower = last.toLowerCase();
-    const sparkSignal = SPARK_SIGNALS.find((s) => lower.includes(s));
-    reply = sparkSignal ? SPARK_REPLIES[sparkSignal] : SPARK_REPLIES[SPARK_SIGNALS[0]];
+    // isSpark guarantees an exact chip signal, so this key is present; fall back
+    // defensively in case a chip's signal text ever drifts from its reply key.
+    reply = SPARK_REPLIES[last.trim().toLowerCase()] ?? Object.values(SPARK_REPLIES)[0];
   } else if (progress <= 1) {
     // Movement one — help them feel heard.
     reply =
