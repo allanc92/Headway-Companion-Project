@@ -50,7 +50,7 @@ export function PriorityCards({
       <button
         type="button"
         onClick={add}
-        className="flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-line py-3 text-sm font-medium text-ink-soft transition-colors hover:border-feather hover:text-ink"
+        className="flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-hairline py-3 text-sm font-medium text-ink-muted transition-colors hover:border-feather hover:text-ink"
       >
         <PlusIcon width={17} height={17} /> Add something that matters to you
       </button>
@@ -76,7 +76,7 @@ function PriorityCardItem({
       value={priority}
       dragListener={false}
       dragControls={controls}
-      className="group rounded-3xl border border-line bg-white/85 p-4 shadow-sm"
+      className="group rounded-3xl border border-hairline bg-surface/90 p-4 shadow-[0_12px_32px_rgba(47,90,134,0.08)]"
       whileDrag={{ scale: 1.02, boxShadow: "0 16px 40px rgba(20,96,59,0.16)" }}
     >
       <div className="flex items-start gap-3">
@@ -84,28 +84,28 @@ function PriorityCardItem({
           type="button"
           onPointerDown={(e) => controls.start(e)}
           aria-label="Drag to reorder"
-          className="mt-1 cursor-grab touch-none text-ink-faint transition-colors hover:text-ink-soft active:cursor-grabbing"
+          className="mt-1 cursor-grab touch-none text-ink-muted transition-colors hover:text-ink-muted active:cursor-grabbing"
         >
           <GripIcon width={18} height={18} />
         </button>
 
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <PencilIcon width={14} height={14} className="shrink-0 text-feather" />
+            <PencilIcon width={14} height={14} className="shrink-0 text-forest" />
             <input
               value={priority.title}
               onChange={(e) => onUpdate({ title: e.target.value })}
               placeholder="Name this in your words…"
-              className="w-full border-b border-transparent bg-transparent font-serif text-lg text-ink outline-none transition-colors focus:border-line"
+              className="w-full border-b border-transparent bg-transparent font-serif text-lg text-ink outline-none transition-colors focus:border-hairline"
             />
           </div>
 
           {priority.sourceQuote && (
-            <p className="mt-1.5 pl-6 text-sm italic text-ink-soft">
+            <p className="mt-1.5 pl-6 text-sm italic text-ink-muted">
               &ldquo;{priority.sourceQuote}&rdquo;
             </p>
           )}
-          <p className="mt-1.5 pl-6 text-sm leading-relaxed text-ink-soft">
+          <p className="mt-1.5 pl-6 text-sm leading-relaxed text-ink-muted">
             {priority.description}
           </p>
 
@@ -113,7 +113,7 @@ function PriorityCardItem({
             {priority.focusTags.map((tag) => (
               <span
                 key={tag}
-                className="inline-flex items-center gap-1 rounded-full bg-mint px-2.5 py-1 text-[0.72rem] font-medium text-forest-700"
+                className="inline-flex items-center gap-1 rounded-full bg-mint-soft px-2.5 py-1 text-[0.72rem] font-medium text-forest-700"
               >
                 {tag}
                 <button
@@ -141,7 +141,7 @@ function PriorityCardItem({
                     setShowTagPicker(false);
                   }}
                   onBlur={() => setShowTagPicker(false)}
-                  className="rounded-full border border-line bg-white px-2 py-1 text-[0.72rem] text-ink-soft outline-none"
+                  className="rounded-full border border-hairline bg-surface px-2 py-1 text-[0.72rem] text-ink-muted outline-none"
                 >
                   <option value="">choose an area…</option>
                   {available.map((f) => (
@@ -154,7 +154,7 @@ function PriorityCardItem({
                 <button
                   type="button"
                   onClick={() => setShowTagPicker(true)}
-                  className="inline-flex items-center gap-0.5 rounded-full border border-dashed border-line px-2 py-1 text-[0.72rem] text-ink-faint transition-colors hover:border-feather hover:text-ink-soft"
+                  className="inline-flex items-center gap-0.5 rounded-full border border-dashed border-hairline px-2 py-1 text-[0.72rem] text-ink-muted transition-colors hover:border-feather hover:text-ink-muted"
                 >
                   <PlusIcon width={12} height={12} /> area
                 </button>
@@ -166,7 +166,7 @@ function PriorityCardItem({
           type="button"
           onClick={onRemove}
           aria-label="Discard this priority"
-          className="text-ink-faint opacity-0 transition-opacity hover:text-alert group-hover:opacity-100"
+          className="text-ink-muted opacity-0 transition-opacity hover:text-alert group-hover:opacity-100"
         >
           <CloseIcon width={18} height={18} />
         </button>

@@ -33,7 +33,11 @@ const SPARK_SIGNALS = ["hard to start", "ask me", "how does this", "not sure wha
  */
 function fallbackReadyForMirror(userTexts: string[]): boolean {
   const meaningful = userTexts.filter((t) => t.trim().length > 0);
-  if (meaningful.length < 3) return false;
+  // Require at least four turns: the fit wondering (movement two) is first posed in
+  // reply to the third turn, so we wait for the person to actually answer it before
+  // signaling readiness — otherwise the Mirror could open with no support-preference
+  // signal for synthesis to reflect.
+  if (meaningful.length < 4) return false;
 
   // A spark-chip signal (e.g. "it's hard to start") isn't real depth.
   const last = (meaningful[meaningful.length - 1] || "").toLowerCase();
