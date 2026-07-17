@@ -44,7 +44,6 @@ async function writeBlurb(
         prioritiesText,
         spectrumsText,
       ),
-      temperature: 0.6,
       maxOutputTokens: 80,
     });
     return text.trim().replace(/^["']|["']$/g, "") || fallbackMatchReason(sp.provider.name);

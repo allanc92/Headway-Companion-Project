@@ -52,7 +52,6 @@ export async function POST(req: Request): Promise<Response> {
       model: getModel(),
       system: COMPANION_SYSTEM,
       messages: modelMessages,
-      temperature: 0.7,
     });
 
     return result.toTextStreamResponse();
