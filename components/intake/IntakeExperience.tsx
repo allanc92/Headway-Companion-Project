@@ -10,7 +10,6 @@ import {
   FindMatchesBlock,
   FindingMatchesBeat,
   InlineIntentionCard,
-  InlineProviderResults,
   PrioritiesBlock,
   ReflectingBeat,
   ReflectionBlock,
@@ -18,6 +17,7 @@ import {
   SpectrumsBlock,
   WelcomeBackBlock,
 } from "./ThreadBlocks";
+import { InlineProviderResults } from "./InlineProviderResults";
 import { useCompanionChat } from "./useCompanionChat";
 import { PROVIDERS } from "@/lib/providers";
 import {
