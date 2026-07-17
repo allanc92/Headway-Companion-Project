@@ -70,6 +70,11 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
   const [helpOpen, setHelpOpen] = useState(false);
   const shownTierRef = useRef<SafetyTier>(0);
 
+  // Count every in-flight classification rather than toggling a boolean: the user
+  // can send again after chat streaming ends while an earlier safety call is still
+  // pending, and whichever request finishes first must not clear the Mirror gate.
+  const [pendingSafetyRequests, setPendingSafetyRequests] = useState(0);
+
   const transitionedRef = useRef(false);
   // The handoff line is posted once per intake; on a synth retry we re-read the
   // latest transcript instead of reusing a cached array, so user turns added during
@@ -97,6 +102,7 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
         : 3;
 
   async function runSafety(text: string) {
+    setPendingSafetyRequests((count) => count + 1);
     try {
       const recent = chat.messages
         .slice(-4)
@@ -115,16 +121,18 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
       }
     } catch {
       /* fail open — never block the person */
+    } finally {
+      setPendingSafetyRequests((count) => count - 1);
     }
   }
 
   function handleSend(text: string) {
-    runSafety(text);
+    void runSafety(text);
     if (stage === "understanding") {
       void refineSummary(text);
       return;
     }
-    chat.send(text);
+    void chat.send(text);
   }
 
   function persist(patch: Partial<Intention>) {
@@ -234,6 +242,9 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
     if (stage !== "conversation") return;
     if (!chat.ready || chat.status !== "idle") return;
     if (helpOpen) return;
+    // Hold the transition until every outstanding safety check settles, so
+    // overlapping classifications cannot clear the gate out of order.
+    if (pendingSafetyRequests > 0) return;
     const lastMessage = chat.messages[chat.messages.length - 1];
     if (lastMessage?.role === "assistant" && lastMessage.safetyTier) return;
 
@@ -243,7 +254,14 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
     }, READINESS_TRANSITION_MS);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chat.ready, chat.status, stage, helpOpen, chat.messages]);
+  }, [
+    chat.ready,
+    chat.status,
+    stage,
+    helpOpen,
+    pendingSafetyRequests,
+    chat.messages,
+  ]);
 
   async function findMatches() {
     // Guard on refining too: a pending correction can still replace the summary,

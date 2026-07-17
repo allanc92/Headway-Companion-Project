@@ -4,10 +4,10 @@ import {
   COMPANION_SYSTEM,
   COMPANION_GREETING,
   COMPANION_FIT_NUDGE,
-  FIT_NUDGE_AFTER_USER_TURNS,
   GREETING_TRIGGER,
 } from "@/lib/prompts";
 import { fallbackCompanionReply, fallbackOpening } from "@/lib/fallback";
+import { fitNudgeSafetyNet } from "@/lib/signal";
 
 export const maxDuration = 30;
 
@@ -62,14 +62,15 @@ export async function POST(req: Request): Promise<Response> {
           content: m.text,
         }));
 
-    // Opening turn: hand the model the greeting instruction. Otherwise, once the
-    // person has opened up for a bit, append a hidden nudge so the same
-    // conversation can drift toward what kind of support would help. Both are
-    // invisible to the person and never rendered as a step.
-    const userTurns = messages.filter((m) => m.role === "user").length;
+    // Opening turn: hand the model the greeting instruction. Otherwise the shift
+    // toward fit is the model's own judgement call (see PHASE DISCIPLINE in
+    // COMPANION_SYSTEM); this hidden nudge is only a SAFETY NET, slipped in if the
+    // model is still circling in "feeling heard" after several substantive turns.
+    // Both are invisible to the person and never rendered as a step.
+    const userTexts = messages.filter((m) => m.role === "user").map((m) => m.text);
     const system = isOpening
       ? `${COMPANION_SYSTEM}\n\n${COMPANION_GREETING}`
-      : userTurns >= FIT_NUDGE_AFTER_USER_TURNS
+      : fitNudgeSafetyNet(userTexts)
         ? `${COMPANION_SYSTEM}\n\n${COMPANION_FIT_NUDGE}`
         : COMPANION_SYSTEM;
 

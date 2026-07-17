@@ -1,5 +1,6 @@
 import type { Priority, SafetyAssessment, SafetyTier, Spectrum, SpectrumId, Synthesis } from "./types";
 import { MIRROR_READY_MARKER } from "./types";
+import { isSpark, substantiveTurns, countWords } from "./signal";
 
 /*
   Offline fallbacks so the prototype never hard-crashes without Azure creds.
@@ -23,20 +24,19 @@ const FIT_PROMPTS = [
   "That's really helpful to know. Is there anything else that would help you feel at ease with the person you talk to?",
 ];
 
-// Each spark chip gets its own reply so tapping different chips doesn't return
-// the same stale line. Keyed by a substring found in that chip's signal text.
+// Each spark chip gets its own reply so tapping different chips doesn't return the
+// same stale line. Keyed by the chip's exact signal text, lowercased -- the same
+// value isSpark matches on (see SPARK_CHIPS in ./copy).
 const SPARK_REPLIES: Record<string, string> = {
-  "hard to start":
+  "it's hard to start.":
     "That's okay — beginning is often the hardest part, and there's no wrong way in. We don't have to name anything big; even a word or two about how you're feeling right now is more than enough.",
-  "ask me":
+  "could you ask me something to help me begin?":
     "Of course. Here's a gentle one, and you can answer however feels right: what's been taking up the most space in your mind lately?",
-  "how does this":
+  "how does this work?":
     "It's simpler than it might look — this is just a space to talk. No forms, no checkboxes. You share whatever's on your mind, I listen and reflect it back, and together we get a clearer sense of what might help. You lead, I'll follow.",
-  "not sure what":
+  "i'm not sure what i need yet.":
     "That's completely okay — you really don't need to have it figured out. Most people arrive not quite knowing. If we just talk about what's going on for you, the part about what you need tends to surface on its own.",
 };
-
-const SPARK_SIGNALS = Object.keys(SPARK_REPLIES);
 
 /**
  * Offline stand-in for the model-generated opening greeting (used when Azure
@@ -49,18 +49,6 @@ export function fallbackOpening(): string {
     "I'm here to help you get connected to the therapist who best matches what you need — and to stay with you along the way, answering questions and supporting you through your care journey.",
     "First, I'd just like to understand you a little. What's on your mind? Whether it's a feeling, a situation, or something that's been brewing for a while, there's no right way to begin — start however you want, and we'll work through it together.",
   ].join("\n\n");
-}
-
-function isSpark(text: string): boolean {
-  const t = text.toLowerCase();
-  return SPARK_SIGNALS.some((s) => t.includes(s));
-}
-
-// The turns that actually move the conversation forward: non-empty and not a
-// "help me start" spark. Fit progress and readiness derive from THESE, not the
-// raw turn count, so a spark turn never skips a fit prompt or fakes depth.
-function substantiveTurns(userTexts: string[]): string[] {
-  return userTexts.filter((t) => t.trim().length > 0 && !isSpark(t));
 }
 
 /**
@@ -81,12 +69,8 @@ function fallbackReadyForMirror(userTexts: string[]): boolean {
   // with no support-preference signal for synthesis to reflect.
   if (substantive.length < 4) return false;
 
-  const totalWords = substantive.reduce(
-    (n, t) => n + t.trim().split(/\s+/).filter(Boolean).length,
-    0,
-  );
   // Roughly a few substantive sentences across the conversation.
-  return totalWords >= 40;
+  return countWords(substantive) >= 40;
 }
 
 // Warm, steady holding replies for when the person's latest message trips the
@@ -117,9 +101,9 @@ export function fallbackCompanionReply(userTexts: string[]): string {
   let reply: string;
   if (isSpark(last)) {
     // Meet a stuck signal with its own per-chip on-ramp; don't advance fit progress.
-    const lower = last.toLowerCase();
-    const sparkSignal = SPARK_SIGNALS.find((s) => lower.includes(s));
-    reply = sparkSignal ? SPARK_REPLIES[sparkSignal] : SPARK_REPLIES[SPARK_SIGNALS[0]];
+    // isSpark guarantees an exact chip signal, so this key is present; fall back
+    // defensively in case a chip's signal text ever drifts from its reply key.
+    reply = SPARK_REPLIES[last.trim().toLowerCase()] ?? Object.values(SPARK_REPLIES)[0];
   } else if (progress <= 1) {
     // Movement one — help them feel heard.
     reply =
