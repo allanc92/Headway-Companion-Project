@@ -472,8 +472,8 @@ export function InlineIntentionCard({
         </div>
 
         <p className="mt-4 text-[0.95rem] leading-relaxed text-ink-muted">
-          Your therapist can start with your words, your priorities, and the way you want to
-          work together.
+          If you choose to share it, your therapist can start with your words, your
+          priorities, and the way you want to work together.
         </p>
         <button
           type="button"
