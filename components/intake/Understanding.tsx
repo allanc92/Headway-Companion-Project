@@ -37,8 +37,8 @@ export function Understanding({
       <section className="animate-rise">
         <h2 className="font-serif text-xl text-ink">What matters to you</h2>
         <p className="mt-1 text-sm text-ink-muted">
-          Drag to rank them. Edit the words, remove what doesn&apos;t fit, or add your own —
-          these are yours, not ours.
+          These grew from what you shared. Drag to rank them, edit the words, remove what
+          doesn&apos;t fit, or add your own — they&apos;re yours, not ours.
         </p>
         <div className="mt-4">
           <PriorityCards priorities={priorities} onChange={onPrioritiesChange} />
@@ -48,7 +48,8 @@ export function Understanding({
       <section className="animate-rise">
         <h2 className="font-serif text-xl text-ink">How you want to work together</h2>
         <p className="mt-1 text-sm text-ink-muted">
-          There&apos;s no right answer. Nudge each one until it feels true to you.
+          Here&apos;s how you described wanting to work. Nudge anything I didn&apos;t get quite
+          right — there&apos;s no wrong answer.
         </p>
         <div className="mt-4">
           <SpectrumControls spectrums={spectrums} onChange={onSpectrumsChange} />

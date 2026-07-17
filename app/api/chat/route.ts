@@ -1,6 +1,10 @@
 import { streamText, type ModelMessage } from "ai";
 import { getModel, hasAzureCreds } from "@/lib/azure";
-import { COMPANION_SYSTEM } from "@/lib/prompts";
+import {
+  COMPANION_SYSTEM,
+  COMPANION_FIT_NUDGE,
+  FIT_NUDGE_AFTER_USER_TURNS,
+} from "@/lib/prompts";
 import { fallbackCompanionReply } from "@/lib/fallback";
 
 export const maxDuration = 30;
@@ -48,9 +52,18 @@ export async function POST(req: Request): Promise<Response> {
       content: m.text,
     }));
 
+    // Hybrid transition: once the person has opened up for a bit, append a hidden
+    // nudge so the same conversation can drift toward what kind of support would help.
+    // This is invisible to the person and never rendered as a step.
+    const userTurns = messages.filter((m) => m.role === "user").length;
+    const system =
+      userTurns >= FIT_NUDGE_AFTER_USER_TURNS
+        ? `${COMPANION_SYSTEM}\n\n${COMPANION_FIT_NUDGE}`
+        : COMPANION_SYSTEM;
+
     const result = streamText({
       model: getModel(),
-      system: COMPANION_SYSTEM,
+      system,
       messages: modelMessages,
       temperature: 0.7,
     });
