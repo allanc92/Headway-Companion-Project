@@ -6,9 +6,15 @@ export interface SparkChip {
   signal: string;
 }
 
-/** Huey's transition line before building the summary — sets expectations so the UI handoff never feels abrupt. */
-export const HANDOFF_LINE =
-  "I’m going to gather what I heard into a simple summary now. Look it over, tell me anything you want changed, and then we’ll use it to find therapists who feel close to what you need.";
+/** Huey's explicit consent check before the conversation becomes a summary. */
+export const SUMMARY_READINESS_PROMPT =
+  "I feel like I have enough to reflect back what I’ve heard so far. Are you ready for me to put together a simple summary, or would you like to keep talking?";
+
+/** User turns recorded when either readiness action is chosen. */
+export const SUMMARY_CONFIRMATION_RESPONSE = "I’m ready to see my summary.";
+export const SUMMARY_CONTINUE_RESPONSE = "I’d like to keep talking a little longer.";
+export const SUMMARY_CONTINUE_ACKNOWLEDGMENT =
+  "Of course. We can stay with this a little longer. What feels important to add or spend more time with?";
 
 /** Tapping a chip sends a gentle signal that summons more companionship. */
 export const SPARK_CHIPS: SparkChip[] = [

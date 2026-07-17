@@ -11,6 +11,7 @@ import {
   InlineIntentionCard,
   ReflectingBeat,
   ResumeIntentionPrompt,
+  SummaryReadinessActions,
   SummaryUnderstandingCard,
   UpdatingSummaryBeat,
   WelcomeBackBlock,
@@ -18,7 +19,10 @@ import {
 import { InlineProviderResults } from "./InlineProviderResults";
 import { useCompanionChat } from "./useCompanionChat";
 import { PROVIDERS } from "@/lib/providers";
-import { HANDOFF_LINE } from "@/lib/copy";
+import {
+  SUMMARY_CONFIRMATION_RESPONSE,
+  SUMMARY_CONTINUE_RESPONSE,
+} from "@/lib/copy";
 import {
   loadIntention,
   saveIntention,
@@ -26,6 +30,7 @@ import {
 } from "@/lib/intention-store";
 import type {
   Booking,
+  ChatMessage,
   IntakeContext,
   Intention,
   MatchResult,
@@ -37,6 +42,7 @@ import type {
 
 type IntakeStage =
   | "conversation"
+  | "confirming"
   | "reflecting"
   | "understanding"
   | "matching"
@@ -46,7 +52,7 @@ type IntakeStage =
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-const READINESS_TRANSITION_MS = 1100;
+const READINESS_PROMPT_DELAY_MS = 1100;
 
 export function IntakeExperience({ context }: { context: IntakeContext }) {
   const router = useRouter();
@@ -75,11 +81,8 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
   // pending, and whichever request finishes first must not clear the Mirror gate.
   const [pendingSafetyRequests, setPendingSafetyRequests] = useState(0);
 
-  const transitionedRef = useRef(false);
-  // The handoff line is posted once per intake; on a synth retry we re-read the
-  // latest transcript instead of reusing a cached array, so user turns added during
-  // an outage aren't dropped from the summary.
-  const handoffPostedRef = useRef(false);
+  const readinessDecisionRef = useRef(false);
+  const synthesizingRef = useRef(false);
 
   useEffect(() => {
     let active = true;
@@ -95,7 +98,7 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
   }, []);
 
   const step: 1 | 2 | 3 =
-    stage === "conversation" || stage === "reflecting"
+    stage === "conversation" || stage === "confirming" || stage === "reflecting"
       ? 1
       : stage === "understanding"
         ? 2
@@ -105,6 +108,7 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
     setPendingSafetyRequests((count) => count + 1);
     try {
       const recent = chat.messages
+        .filter((m) => !m.excludeFromSynthesis)
         .slice(-4)
         .map((m) => `${m.role}: ${m.text}`)
         .join("\n");
@@ -127,6 +131,11 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
   }
 
   function handleSend(text: string) {
+    if (stage === "confirming") {
+      if (readinessDecisionRef.current) return;
+      readinessDecisionRef.current = true;
+      setStage("conversation");
+    }
     void runSafety(text);
     if (stage === "understanding") {
       void refineSummary(text);
@@ -153,14 +162,9 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
     setTimestamps((prev) => ({ ...prev, updatedAt }));
   }
 
-  async function goToMirror() {
-    if (!handoffPostedRef.current) {
-      chat.addAssistantMessage(HANDOFF_LINE);
-      handoffPostedRef.current = true;
-    }
-    // Read the freshest transcript (includes the handoff line plus anything the
-    // person added since a previous failed attempt) so retries never omit new turns.
-    const transcript = chat.getMessages();
+  async function goToMirror(transcript: ChatMessage[]) {
+    if (synthesizingRef.current) return;
+    synthesizingRef.current = true;
     setStage("reflecting");
     try {
       const [res] = await Promise.all([
@@ -168,11 +172,14 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            messages: transcript.map((m) => ({ role: m.role, text: m.text })),
+            messages: transcript
+              .filter((m) => !m.excludeFromSynthesis)
+              .map((m) => ({ role: m.role, text: m.text })),
           }),
         }),
         sleep(2600),
       ]);
+      if (!res.ok) throw new Error("Synthesis failed");
       const data: Synthesis = await res.json();
       setSynthesis(data);
       setPriorities(data.priorities);
@@ -184,9 +191,40 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
       });
       setStage("understanding");
     } catch {
-      transitionedRef.current = false;
-      setStage("conversation");
+      readinessDecisionRef.current = false;
+      chat.addAssistantMessage(
+        "I had trouble putting that summary together just now. We can try again whenever you’re ready, or keep talking.",
+        { excludeFromSynthesis: true },
+      );
+      setStage("confirming");
+    } finally {
+      synthesizingRef.current = false;
     }
+  }
+
+  function confirmSummary() {
+    if (
+      stage !== "confirming" ||
+      readinessDecisionRef.current ||
+      synthesizingRef.current
+    ) {
+      return;
+    }
+    readinessDecisionRef.current = true;
+    const transcript = chat.addUserMessage(SUMMARY_CONFIRMATION_RESPONSE, {
+      excludeFromSynthesis: true,
+    });
+    void goToMirror(transcript);
+  }
+
+  function continueConversation() {
+    if (stage !== "confirming" || readinessDecisionRef.current) return;
+    readinessDecisionRef.current = true;
+    setStage("conversation");
+    void chat.send(SUMMARY_CONTINUE_RESPONSE, {
+      trackReadiness: false,
+      excludeFromSynthesis: true,
+    });
   }
 
   async function refineSummary(text: string) {
@@ -205,7 +243,9 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          messages: transcript.map((m) => ({ role: m.role, text: m.text })),
+          messages: transcript
+            .filter((m) => !m.excludeFromSynthesis)
+            .map((m) => ({ role: m.role, text: m.text })),
           synthesis: current,
         }),
       });
@@ -237,30 +277,34 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
     }
   }
 
+  const {
+    messages: readinessMessages,
+    ready: summaryReady,
+    status: readinessStatus,
+  } = chat;
+
   useEffect(() => {
-    if (transitionedRef.current) return;
     if (stage !== "conversation") return;
-    if (!chat.ready || chat.status !== "idle") return;
+    if (!summaryReady || readinessStatus !== "idle") return;
     if (helpOpen) return;
     // Hold the transition until every outstanding safety check settles, so
     // overlapping classifications cannot clear the gate out of order.
     if (pendingSafetyRequests > 0) return;
-    const lastMessage = chat.messages[chat.messages.length - 1];
+    const lastMessage = readinessMessages[readinessMessages.length - 1];
     if (lastMessage?.role === "assistant" && lastMessage.safetyTier) return;
 
     const t = setTimeout(() => {
-      transitionedRef.current = true;
-      goToMirror();
-    }, READINESS_TRANSITION_MS);
+      readinessDecisionRef.current = false;
+      setStage("confirming");
+    }, READINESS_PROMPT_DELAY_MS);
     return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    chat.ready,
-    chat.status,
+    summaryReady,
+    readinessStatus,
     stage,
     helpOpen,
     pendingSafetyRequests,
-    chat.messages,
+    readinessMessages,
   ]);
 
   async function findMatches() {
@@ -355,9 +399,15 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
   const matching = stage === "matching";
   const showUnderstanding = Boolean(synthesis) && !resumed;
   const composerDisabled =
-    (stage !== "conversation" && stage !== "understanding") || resumed || refining;
+    (stage !== "conversation" &&
+      stage !== "confirming" &&
+      stage !== "understanding") ||
+    resumed ||
+    refining;
   const composerPlaceholder =
-    stage === "understanding"
+    stage === "confirming"
+      ? "Add anything else, or choose when you’re ready…"
+      : stage === "understanding"
       ? refining
         ? "I’m updating that now…"
         : "Want to change anything? Just tell me…"
@@ -382,6 +432,13 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
       )}
 
       {resumed && <WelcomeBackBlock />}
+
+      {stage === "confirming" && (
+        <SummaryReadinessActions
+          onConfirm={confirmSummary}
+          onContinue={continueConversation}
+        />
+      )}
 
       {stage === "reflecting" && <ReflectingBeat />}
 

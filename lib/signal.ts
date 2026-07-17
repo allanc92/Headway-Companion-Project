@@ -84,7 +84,7 @@ export function fitNudgeSafetyNet(userTexts: string[]): boolean {
 }
 
 /**
- * True once the conversation has circled long enough to force Mirror readiness.
+ * True once the conversation has circled long enough to offer the Mirror.
  * NOT the primary trigger — the model-emitted readiness marker is.
  */
 export function mirrorSafetyNet(userTexts: string[]): boolean {
