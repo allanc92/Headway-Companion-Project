@@ -2,8 +2,6 @@
 
 import { useMemo, useState } from "react";
 import { IntentionArtifact } from "./IntentionArtifact";
-import { PriorityCards } from "./PriorityCards";
-import { SpectrumControls } from "./SpectrumControls";
 import { ThinkingShimmer } from "./ThinkingShimmer";
 import { ArrowIcon, CheckIcon, CloseIcon, FeatherIcon } from "@/components/ui/icons";
 import { getProviderBookingDays } from "@/lib/booking";
@@ -98,86 +96,121 @@ export function ReflectingBeat() {
   );
 }
 
-export function ReflectionBlock({ reflection }: { reflection: string }) {
-  return (
-    <section className="animate-rise">
-      <p className="text-sm font-medium text-forest">The mirror</p>
-      <h1 className="mt-2 font-serif text-[1.7rem] leading-snug text-ink sm:text-[2rem]">
-        Here&apos;s what I heard.
-      </h1>
-      <p className="mt-3 max-w-xl text-[1.08rem] leading-relaxed text-ink-muted">
-        {reflection}
-      </p>
-    </section>
-  );
+function clampPercent(value: number): number {
+  return Math.max(0, Math.min(100, Math.round(value)));
 }
 
-export function PrioritiesBlock({
+export function SummaryUnderstandingCard({
+  reflection,
   priorities,
-  onChange,
-}: {
-  priorities: Priority[];
-  onChange: (next: Priority[]) => void;
-}) {
-  return (
-    <section className="animate-rise">
-      <h2 className="font-serif text-xl text-ink">What matters to you</h2>
-      <p className="mt-1 text-sm text-ink-muted">
-        These grew from what you shared. Drag to rank them, edit the words, remove what
-        doesn&apos;t fit, or add your own — they&apos;re yours, not ours.
-      </p>
-      <div className="mt-4">
-        <PriorityCards priorities={priorities} onChange={onChange} />
-      </div>
-    </section>
-  );
-}
-
-export function SpectrumsBlock({
   spectrums,
-  onChange,
-}: {
-  spectrums: Spectrum[];
-  onChange: (next: Spectrum[]) => void;
-}) {
-  return (
-    <section className="animate-rise">
-      <h2 className="font-serif text-xl text-ink">How you want to work together</h2>
-      <p className="mt-1 text-sm text-ink-muted">
-        Here&apos;s how you described wanting to work. Nudge anything I didn&apos;t get quite
-        right — there&apos;s no wrong answer.
-      </p>
-      <div className="mt-4">
-        <SpectrumControls spectrums={spectrums} onChange={onChange} />
-      </div>
-    </section>
-  );
-}
-
-export function FindMatchesBlock({
   disabled,
   matching,
   onFindMatches,
+  showAction = true,
 }: {
+  reflection: string;
+  priorities: Priority[];
+  spectrums: Spectrum[];
   disabled: boolean;
   matching: boolean;
   onFindMatches: () => void;
+  showAction?: boolean;
 }) {
   return (
-    <section className="animate-rise rounded-3xl border border-hairline bg-surface/80 p-4 shadow-[0_12px_32px_rgba(47,90,134,0.08)] sm:p-5">
-      <p className="text-sm leading-relaxed text-ink-muted">
-        When these feel close enough, we&apos;ll turn them into a shortlist — with the
-        tradeoffs named plainly.
-      </p>
-      <button
-        type="button"
-        onClick={onFindMatches}
-        disabled={disabled || matching}
-        className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-forest px-6 py-3.5 font-medium text-mint transition-colors hover:bg-forest-700 disabled:opacity-60"
-      >
-        {matching ? "Finding your matches…" : "Find my matches"}
-        {!matching && <ArrowIcon width={18} height={18} />}
-      </button>
+    <section className="animate-rise rounded-3xl border border-hairline-strong bg-surface/95 p-5 shadow-[0_12px_32px_rgba(47,90,134,0.08)] sm:p-6">
+      <header>
+        <p className="text-sm font-medium text-forest">Here&apos;s what I heard</p>
+        <h1 className="mt-2 font-serif text-[1.7rem] leading-snug text-ink sm:text-[2rem]">
+          A simple summary we can shape together.
+        </h1>
+        <p className="mt-3 max-w-xl text-[1.08rem] leading-relaxed text-ink-muted">
+          {reflection}
+        </p>
+      </header>
+
+      <div className="mt-6 space-y-6">
+        <div>
+          <h2 className="font-serif text-xl text-ink">What seems to matter most</h2>
+          <div className="mt-3 space-y-3">
+            {priorities.map((priority) => (
+              <article
+                key={priority.id}
+                className="rounded-2xl border border-hairline bg-surface-2/55 p-4"
+              >
+                <h3 className="font-medium text-ink">{priority.title}</h3>
+                <p className="mt-1 text-sm leading-relaxed text-ink-muted">
+                  {priority.description}
+                </p>
+                {priority.sourceQuote && (
+                  <p className="mt-2 text-sm leading-relaxed text-forest-700">
+                    “{priority.sourceQuote}”
+                  </p>
+                )}
+              </article>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <h2 className="font-serif text-xl text-ink">How you may want to work together</h2>
+          <div className="mt-3 space-y-4">
+            {spectrums.map((spectrum) => {
+              const value = clampPercent(spectrum.value);
+              return (
+                <article key={spectrum.id} className="rounded-2xl bg-mint-soft/55 p-4">
+                  <div className="flex items-center justify-between gap-3 text-xs font-medium text-ink-muted">
+                    <span>{spectrum.leftLabel}</span>
+                    <span className="text-right">{spectrum.rightLabel}</span>
+                  </div>
+                  <div className="relative mt-3 h-2 rounded-full bg-surface">
+                    <div
+                      className="h-full rounded-full bg-forest/35"
+                      style={{ width: `${value}%` }}
+                    />
+                    <span
+                      className="absolute top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-surface bg-forest shadow-[0_4px_10px_rgba(47,90,134,0.16)]"
+                      style={{ left: `${value}%` }}
+                      aria-hidden="true"
+                    />
+                  </div>
+                  {spectrum.note && (
+                    <p className="mt-3 text-sm leading-relaxed text-ink-muted">
+                      {spectrum.note}
+                    </p>
+                  )}
+                </article>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {showAction && (
+        <div className="mt-6 rounded-2xl border border-hairline bg-surface-2/60 p-4">
+          <p className="text-sm leading-relaxed text-ink-muted">
+            If anything feels off, just tell me in the chat and I&apos;ll update this with you.
+            When it feels close enough, we&apos;ll use it to find therapists who fit.
+          </p>
+          <button
+            type="button"
+            onClick={onFindMatches}
+            disabled={disabled || matching}
+            className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-forest px-6 py-3.5 font-medium text-mint transition-colors hover:bg-forest-700 disabled:opacity-60"
+          >
+            {matching ? "Finding your matches…" : "Find my matches"}
+            {!matching && <ArrowIcon width={18} height={18} />}
+          </button>
+        </div>
+      )}
+    </section>
+  );
+}
+
+export function UpdatingSummaryBeat() {
+  return (
+    <section className="animate-rise">
+      <ThinkingShimmer label="Updating your summary…" />
     </section>
   );
 }
@@ -185,7 +218,7 @@ export function FindMatchesBlock({
 export function FindingMatchesBeat() {
   return (
     <section className="animate-rise">
-      <ThinkingShimmer label="Looking for therapists who fit this map…" />
+      <ThinkingShimmer label="Looking for therapists who fit what you shared…" />
     </section>
   );
 }

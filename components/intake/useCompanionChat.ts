@@ -121,7 +121,29 @@ export function useCompanionChat() {
     [commit],
   );
 
+  const addAssistantMessage = useCallback(
+    (text: string) => {
+      const msg: ChatMessage = { id: genId(), role: "assistant", text };
+      const next = [...messagesRef.current, msg];
+      commit(() => next);
+      return next;
+    },
+    [commit],
+  );
+
+  const addUserMessage = useCallback(
+    (text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed) return messagesRef.current;
+      const msg: ChatMessage = { id: genId(), role: "user", text: trimmed };
+      const next = [...messagesRef.current, msg];
+      commit(() => next);
+      return next;
+    },
+    [commit],
+  );
+
   const userTurnCount = messages.filter((m) => m.role === "user").length;
 
-  return { messages, status, send, userTurnCount, ready };
+  return { messages, status, send, addAssistantMessage, addUserMessage, userTurnCount, ready };
 }

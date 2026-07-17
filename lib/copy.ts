@@ -13,6 +13,9 @@ export const OPENING_LINES: string[] = [
   "Whatever's on your mind — a feeling, a situation, something from today — you can just start there. There's no right way to do this.",
 ];
 
+export const HANDOFF_LINE =
+  "I’m going to gather what I heard into a simple summary now. Look it over, tell me anything you want changed, and then we’ll use it to find therapists who feel close to what you need.";
+
 /** Tapping a chip sends a gentle signal that summons more companionship. */
 export const SPARK_CHIPS: SparkChip[] = [
   { label: "It's hard to start", signal: "It's hard to start." },

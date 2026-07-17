@@ -7,19 +7,18 @@ import { Conversation } from "./Conversation";
 import { SafetyOverlay } from "./SafetyOverlay";
 import {
   BookingBlock,
-  FindMatchesBlock,
   FindingMatchesBeat,
   InlineIntentionCard,
-  PrioritiesBlock,
   ReflectingBeat,
-  ReflectionBlock,
   ResumeIntentionPrompt,
-  SpectrumsBlock,
+  SummaryUnderstandingCard,
+  UpdatingSummaryBeat,
   WelcomeBackBlock,
 } from "./ThreadBlocks";
 import { InlineProviderResults } from "./InlineProviderResults";
 import { useCompanionChat } from "./useCompanionChat";
 import { PROVIDERS } from "@/lib/providers";
+import { HANDOFF_LINE } from "@/lib/copy";
 import {
   loadIntention,
   saveIntention,
@@ -62,6 +61,7 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
   const [booking, setBooking] = useState<Booking | null>(null);
   const [resumable, setResumable] = useState<Intention | null>(null);
   const [resumed, setResumed] = useState(false);
+  const [refining, setRefining] = useState(false);
   const [timestamps, setTimestamps] = useState(() => {
     const now = new Date().toISOString();
     return { createdAt: now, updatedAt: now };
@@ -121,8 +121,12 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
   }
 
   function handleSend(text: string) {
-    chat.send(text);
     runSafety(text);
+    if (stage === "understanding") {
+      void refineSummary(text);
+      return;
+    }
+    chat.send(text);
   }
 
   function persist(patch: Partial<Intention>) {
@@ -144,6 +148,7 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
   }
 
   async function goToMirror() {
+    const transcript = chat.addAssistantMessage(HANDOFF_LINE);
     setStage("reflecting");
     try {
       const [res] = await Promise.all([
@@ -151,7 +156,7 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            messages: chat.messages.map((m) => ({ role: m.role, text: m.text })),
+            messages: transcript.map((m) => ({ role: m.role, text: m.text })),
           }),
         }),
         sleep(2600),
@@ -169,6 +174,54 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
     } catch {
       transitionedRef.current = false;
       setStage("conversation");
+    }
+  }
+
+  async function refineSummary(text: string) {
+    if (!synthesis || refining) return;
+
+    const current: Synthesis = {
+      reflection: synthesis.reflection,
+      priorities,
+      spectrums,
+    };
+    const transcript = chat.addUserMessage(text);
+    setRefining(true);
+
+    try {
+      const res = await fetch("/api/refine", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: transcript.map((m) => ({ role: m.role, text: m.text })),
+          synthesis: current,
+        }),
+      });
+      if (!res.ok) throw new Error("Refine failed");
+      const data: Synthesis & { acknowledgment?: string } = await res.json();
+      const next: Synthesis = {
+        reflection: data.reflection,
+        priorities: data.priorities,
+        spectrums: data.spectrums,
+      };
+      setSynthesis(next);
+      setPriorities(next.priorities);
+      setSpectrums(next.spectrums);
+      persist({
+        reflection: next.reflection,
+        priorities: next.priorities,
+        spectrums: next.spectrums,
+      });
+      chat.addAssistantMessage(
+        data.acknowledgment?.trim() ||
+          "I've updated your summary — take a look and tell me if anything still feels off.",
+      );
+    } catch {
+      chat.addAssistantMessage(
+        "I had trouble updating that just now, but I'm still here — you can try telling me again.",
+      );
+    } finally {
+      setRefining(false);
     }
   }
 
@@ -275,7 +328,14 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
 
   const matching = stage === "matching";
   const showUnderstanding = Boolean(synthesis) && !resumed;
-  const composerDisabled = stage !== "conversation" || resumed;
+  const composerDisabled =
+    (stage !== "conversation" && stage !== "understanding") || resumed || refining;
+  const composerPlaceholder =
+    stage === "understanding"
+      ? refining
+        ? "I’m updating that now…"
+        : "Want to change anything? Just tell me…"
+      : undefined;
   const progressKey = [
     stage,
     synthesis ? "synthesis" : "no-synthesis",
@@ -283,6 +343,7 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
     chosenProviderId ?? "no-provider",
     booking ? `booking-${booking.date}-${booking.time}` : "no-booking",
     resumed ? "resumed" : "fresh",
+    refining ? "refining" : "not-refining",
   ].join(":");
 
   const afterMessages = (
@@ -300,16 +361,16 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
 
       {showUnderstanding && synthesis && (
         <>
-          <ReflectionBlock reflection={synthesis.reflection} />
-          <PrioritiesBlock priorities={priorities} onChange={setPriorities} />
-          <SpectrumsBlock spectrums={spectrums} onChange={setSpectrums} />
-          {!matchResult && (
-            <FindMatchesBlock
-              disabled={priorities.length === 0}
-              matching={matching}
-              onFindMatches={findMatches}
-            />
-          )}
+          <SummaryUnderstandingCard
+            reflection={synthesis.reflection}
+            priorities={priorities}
+            spectrums={spectrums}
+            disabled={priorities.length === 0}
+            matching={matching}
+            onFindMatches={findMatches}
+            showAction={!matchResult}
+          />
+          {refining && <UpdatingSummaryBeat />}
         </>
       )}
 
@@ -354,6 +415,7 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
           afterMessages={afterMessages}
           progressKey={progressKey}
           composerDisabled={composerDisabled}
+          composerPlaceholder={composerPlaceholder}
         />
       </main>
 

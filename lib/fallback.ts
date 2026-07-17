@@ -265,13 +265,26 @@ export function fallbackSynthesis(transcript: string): Synthesis {
 
   return {
     reflection:
-      "Here's what I'm hearing, in your words — tell me where I've got it wrong. You named something real, and you gave me a sense not just of how it feels but of the kind of support that would help. What matters now is finding someone who meets you where you actually are. These are a first draft — move them, edit them, or throw any out.",
+      "Here's what I'm hearing, in your words — tell me where I've got it wrong. You named something real, and you gave me a sense not just of how it feels but of the kind of support that would help. What matters now is finding someone who meets you where you actually are. This is a first draft, and you can change anything by telling me.",
     priorities,
     spectrums: [
       { id: "action_space", leftLabel: "Action-oriented", rightLabel: "Space-holding", value: fit.action_space.value, note: fit.action_space.note },
       { id: "structure", leftLabel: "Structured sessions", rightLabel: "Open & exploratory", value: fit.structure.value, note: fit.structure.note },
       { id: "depth", leftLabel: "Practical & present", rightLabel: "Insight & depth", value: fit.depth.value, note: fit.depth.note },
     ],
+  };
+}
+
+export function fallbackRefine(
+  transcript: string,
+  current: Synthesis,
+): Synthesis & { acknowledgment: string } {
+  const next = fallbackSynthesis(transcript);
+  return {
+    reflection: next.reflection || current.reflection,
+    priorities: next.priorities.length ? next.priorities : current.priorities,
+    spectrums: next.spectrums.length ? next.spectrums : current.spectrums,
+    acknowledgment: "I've updated your summary — take a look.",
   };
 }
 
