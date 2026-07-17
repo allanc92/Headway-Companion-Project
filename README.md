@@ -62,20 +62,25 @@ The Headway-inspired homepage shell contains illustrative marketplace and
 pricing copy. This repository does not establish those figures as current
 Headway facts.
 
-## Product principles
+## The Product Principles
 
-1. **Expression before taxonomy.** Meet the person in their own words before
-   asking them to navigate clinical categories.
-2. **Earn the summary.** Progress is based on conversational substance, followed
-   by an explicit readiness choice, rather than a hidden fixed turn count.
-3. **Use determinism where trust requires it.** AI handles language and
-   interpretation; code handles hard filters, scoring, availability, and
-   bottleneck math.
-4. **Make understanding inspectable.** The summary exposes what the system
-   inferred and lets the person correct it through the same conversation.
-5. **Preserve ownership and product humility.** The Intention belongs to the
-   person, sharing is opt-in language rather than an implied data flow, and
-   safety limitations remain visible.
+1. **Expression over taxonomy** — we meet the patient in their own words. The entry point
+   is a quiet, natural-language conversation; the system does the work of translating
+   context into matching criteria behind the scenes.
+2. **Co-authored understanding** — no black-box matching. What the AI infers is surfaced
+   as tactile, malleable **priority cards** the patient can rank, edit, or discard, each
+   anchored to a phrase they actually said.
+3. **Transparency is trust** — we replace filter sidebars with human **spectrums**
+   (Action-oriented ↔ Space-holding) and surface real marketplace trade-offs. When
+   criteria are too narrow, the UI shows the bottleneck and what adjusting it unlocks.
+4. **Context is connection** — the intake becomes a persistent **Intention** artifact: it
+   belongs to the patient, can be shared with a therapist if they choose, and stays an
+   updatable compass for the patient.
+
+A fifth, non-negotiable layer — **duty of care** — runs an always-on "Get help now"
+affordance (a focused resource panel in the header) and a tiered crisis-detection
+model that gently weaves crisis resources into the companion's own reply, in
+conversational flow, rather than interrupting with a popup.
 
 ## Why this palette
 
