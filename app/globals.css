@@ -121,6 +121,15 @@
     background:
       linear-gradient(to top, rgba(243, 248, 223, 0.98) 0%, rgba(251, 252, 248, 0.94) 58%, rgba(251, 252, 248, 0) 100%);
   }
+
+  .hide-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .hide-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 * {
