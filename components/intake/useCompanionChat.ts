@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MIRROR_READY_MARKER } from "@/lib/types";
 import { mirrorSafetyNet } from "@/lib/signal";
-import type { ChatMessage } from "@/lib/types";
+import type { ChatMessage, SafetyTier } from "@/lib/types";
 
 let counter = 0;
 const genId = () => `m${++counter}-${Date.now()}`;
@@ -178,5 +178,29 @@ export function useCompanionChat() {
 
   const userTurnCount = messages.filter((m) => m.role === "user").length;
 
-  return { messages, status, send, userTurnCount, ready };
+  /**
+   * Weave crisis resources into the most recent assistant turn so they render as
+   * part of Huey's own reply (never a popup). Only ever escalates the tier on a
+   * given message.
+   */
+  const flagSafety = useCallback(
+    (tier: SafetyTier) => {
+      if (tier < 1) return;
+      commit((prev) => {
+        for (let i = prev.length - 1; i >= 0; i--) {
+          if (prev[i].role === "assistant") {
+            const current = prev[i].safetyTier ?? 0;
+            if (tier <= current) return prev;
+            const next = [...prev];
+            next[i] = { ...next[i], safetyTier: tier };
+            return next;
+          }
+        }
+        return prev;
+      });
+    },
+    [commit],
+  );
+
+  return { messages, status, send, userTurnCount, ready, flagSafety };
 }

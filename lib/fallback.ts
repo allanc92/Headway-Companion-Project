@@ -73,8 +73,27 @@ function fallbackReadyForMirror(userTexts: string[]): boolean {
   return countWords(substantive) >= 40;
 }
 
+// Warm, steady holding replies for when the person's latest message trips the
+// safety classifier. Deliberately NON-probing: a crisis moment is a time to
+// steady someone and let them feel you're right there — not to interview them.
+// The actual resources are woven in beneath by the UI, so these focus on
+// presence and validation and hand off naturally to that layer.
+const SAFETY_HOLD: Record<1 | 2 | 3, string> = {
+  1: "Thank you for saying that out loud — it sounds like you're carrying something really heavy right now, and I'm really glad you told me. There's nothing you need to explain or have figured out; I'm here with you.",
+  2: "I'm really glad you told me. What you're going through sounds so painful to carry, and I want you to know I'm taking it to heart — you deserve real support with this.",
+  3: "I'm really glad you told me, and I'm taking what you shared seriously. You matter — more than this moment of pain is letting you feel right now — and you deserve to have someone with you through it.",
+};
+
 export function fallbackCompanionReply(userTexts: string[]): string {
   const last = userTexts[userTexts.length - 1] || "";
+
+  // In a crisis moment, hold and steady rather than asking a probing question —
+  // this pairs with the resources the UI weaves in beneath. Uses the same
+  // classifier that drives that woven block, so the reply and the resources
+  // always agree, and never appends the readiness marker (never move on mid-crisis).
+  const tier = fallbackSafety(last).tier;
+  if (tier >= 1) return SAFETY_HOLD[tier as 1 | 2 | 3];
+
   // Fit progress counts substantive turns, so a spark ("can you ask me something?")
   // neither skips the first fit prompt nor advances toward the Mirror on its own.
   const progress = substantiveTurns(userTexts).length;

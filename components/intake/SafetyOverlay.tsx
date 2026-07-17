@@ -15,6 +15,7 @@ import {
 } from "@/lib/copy";
 
 import { ShieldIcon, CloseIcon, LifebuoyIcon } from "@/components/ui/icons";
+import { boldNumber } from "./safety-format";
 
 import type { SafetyTier } from "@/lib/types";
 
@@ -134,7 +135,7 @@ export function SafetyOverlay({
 
                 <span className="block text-sm font-semibold text-ink">{r.action}</span>
 
-                <span className="block text-xs text-ink-muted">{r.detail}</span>
+                <span className="block text-xs text-ink-muted">{boldNumber(r.detail, r.number)}</span>
 
               </span>
 

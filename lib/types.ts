@@ -15,6 +15,12 @@ export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
   text: string;
+  /**
+   * When set, the app has woven crisis resources into this assistant turn
+   * (tiers 1–3). Rendered inline within the message bubble as Huey's own words —
+   * never a separate popup or card.
+   */
+  safetyTier?: SafetyTier;
 }
 
 export interface SafetyAssessment {

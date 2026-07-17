@@ -67,11 +67,8 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
     return { createdAt: now, updatedAt: now };
   });
 
-  const [safety, setSafety] = useState<{
-    open: boolean;
-    tier: SafetyTier;
-    manual: boolean;
-  }>({ open: false, tier: 0, manual: false });
+  const [helpOpen, setHelpOpen] = useState(false);
+  const shownTierRef = useRef<SafetyTier>(0);
 
   const transitionedRef = useRef(false);
 
@@ -108,12 +105,9 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
       });
       const data = await res.json();
       const tier = Number(data?.tier) as SafetyTier;
-      if (tier >= 1) {
-        setSafety((prev) =>
-          prev.open && prev.tier >= tier
-            ? prev
-            : { open: true, tier, manual: false },
-        );
+      if (tier >= 1 && tier > shownTierRef.current) {
+        shownTierRef.current = tier;
+        chat.flagSafety(tier);
       }
     } catch {
       /* fail open — never block the person */
@@ -176,7 +170,9 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
     if (transitionedRef.current) return;
     if (stage !== "conversation") return;
     if (!chat.ready || chat.status !== "idle") return;
-    if (safety.open) return;
+    if (helpOpen) return;
+    const lastMessage = chat.messages[chat.messages.length - 1];
+    if (lastMessage?.role === "assistant" && lastMessage.safetyTier) return;
 
     const t = setTimeout(() => {
       transitionedRef.current = true;
@@ -184,7 +180,7 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
     }, READINESS_TRANSITION_MS);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chat.ready, chat.status, stage, safety.open]);
+  }, [chat.ready, chat.status, stage, helpOpen, chat.messages]);
 
   async function findMatches() {
     if (priorities.length === 0) return;
@@ -342,7 +338,7 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
     <div className="min-h-dvh chat-canvas">
       <IntakeHeader
         step={step}
-        onHelp={() => setSafety({ open: true, tier: 0, manual: true })}
+        onHelp={() => setHelpOpen(true)}
       />
 
       <main className="mx-auto max-w-3xl px-5 pt-8 sm:pt-10">
@@ -357,12 +353,8 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
         />
       </main>
 
-      {safety.open && (
-        <SafetyOverlay
-          tier={safety.tier}
-          manual={safety.manual}
-          onDismiss={() => setSafety({ open: false, tier: 0, manual: false })}
-        />
+      {helpOpen && (
+        <SafetyOverlay tier={0} manual onDismiss={() => setHelpOpen(false)} />
       )}
     </div>
   );
