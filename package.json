@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@ai-sdk/azure": "^4.0.16",
+    "@vercel/analytics": "^2.0.1",
     "ai": "^7.0.30",
     "framer-motion": "^12.42.2",
     "next": "16.2.10",

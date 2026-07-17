@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MIRROR_READY_MARKER } from "@/lib/types";
-import type { ChatMessage } from "@/lib/types";
+import type { ChatMessage, SafetyTier } from "@/lib/types";
 
 let counter = 0;
 const genId = () => `m${++counter}-${Date.now()}`;
@@ -194,5 +194,29 @@ export function useCompanionChat() {
   // always see messages added since their last read, not a stale snapshot.
   const getMessages = useCallback(() => messagesRef.current, []);
 
-  return { messages, status, send, addAssistantMessage, addUserMessage, getMessages, userTurnCount, ready };
+  /**
+   * Weave crisis resources into the most recent assistant turn so they render as
+   * part of Huey's own reply (never a popup). Only ever escalates the tier on a
+   * given message.
+   */
+  const flagSafety = useCallback(
+    (tier: SafetyTier) => {
+      if (tier < 1) return;
+      commit((prev) => {
+        for (let i = prev.length - 1; i >= 0; i--) {
+          if (prev[i].role === "assistant") {
+            const current = prev[i].safetyTier ?? 0;
+            if (tier <= current) return prev;
+            const next = [...prev];
+            next[i] = { ...next[i], safetyTier: tier };
+            return next;
+          }
+        }
+        return prev;
+      });
+    },
+    [commit],
+  );
+
+  return { messages, status, send, addAssistantMessage, addUserMessage, getMessages, userTurnCount, ready, flagSafety };
 }
