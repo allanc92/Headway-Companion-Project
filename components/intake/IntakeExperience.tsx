@@ -26,6 +26,7 @@ import {
 } from "@/lib/intention-store";
 import type {
   Booking,
+  ChatMessage,
   IntakeContext,
   Intention,
   MatchResult,
@@ -74,6 +75,9 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
   }>({ open: false, tier: 0, manual: false });
 
   const transitionedRef = useRef(false);
+  // The handoff line is posted once per intake; reused across synth retries so an
+  // outage doesn't append duplicate "I'm going to gather..." bubbles on every retry.
+  const handoffTranscriptRef = useRef<ChatMessage[] | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -148,7 +152,9 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
   }
 
   async function goToMirror() {
-    const transcript = chat.addAssistantMessage(HANDOFF_LINE);
+    const transcript =
+      handoffTranscriptRef.current ?? chat.addAssistantMessage(HANDOFF_LINE);
+    handoffTranscriptRef.current = transcript;
     setStage("reflecting");
     try {
       const [res] = await Promise.all([

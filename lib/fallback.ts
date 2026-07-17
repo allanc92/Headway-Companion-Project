@@ -1,4 +1,4 @@
-import type { SafetyAssessment, SafetyTier, Synthesis } from "./types";
+import type { Priority, SafetyAssessment, SafetyTier, Spectrum, Synthesis } from "./types";
 import { MIRROR_READY_MARKER } from "./types";
 
 /*
@@ -275,16 +275,120 @@ export function fallbackSynthesis(transcript: string): Synthesis {
   };
 }
 
+const REFINE_REMOVAL_RE =
+  /\b(remove|removing|drop|dropping|delete|deleting|take out|took out|get rid|rid of|without|not|no longer|isn'?t|aren'?t|stop|less|scratch|nix|forget)\b/;
+
+// Contrast/replacement boundaries: a correction like "not anxiety, it's really work
+// burnout" pivots at a comma or "it's", so we evaluate removal per clause rather than
+// letting a "not" earlier in the turn bleed onto a theme named later.
+const REFINE_CLAUSE_RE = /[,;]|\bit'?s\b|\bit is\b|\binstead\b|\brather\b/;
+
+/** The person's most recent turn (their correction), lowercased. */
+function latestPersonTurn(transcript: string): string {
+  const lines = transcript.split(/\n+/).filter((l) => /^\s*Person:/i.test(l));
+  const last = lines[lines.length - 1] ?? "";
+  return last
+    .replace(/^\s*Person:\s*/i, "")
+    .trim()
+    .toLowerCase();
+}
+
+// True when the clause naming the keyword also carries a removal/negation cue — e.g.
+// "remove anxiety" or "it's not anxiety" — but not "i'm not sure, maybe anxiety helps"
+// (the hedge lives in a different clause) or "work is another burnout thing" (word
+// boundaries keep "not" from matching inside "another").
+function keywordRemoved(turn: string, keyword: string): boolean {
+  for (const clause of turn.split(REFINE_CLAUSE_RE)) {
+    if (clause.includes(keyword) && REFINE_REMOVAL_RE.test(clause)) return true;
+  }
+  return false;
+}
+
 export function fallbackRefine(
   transcript: string,
   current: Synthesis,
 ): Synthesis & { acknowledgment: string } {
-  const next = fallbackSynthesis(transcript);
+  const latest = latestPersonTurn(transcript);
+  const ack = "I've updated your summary — take a look.";
+
+  // No prior summary to build on, or we couldn't read a latest turn: fall back to a
+  // full resynthesis (the original behavior) rather than guessing.
+  if (!latest || (!current.priorities.length && !current.spectrums.length)) {
+    const next = fallbackSynthesis(transcript);
+    return {
+      reflection: next.reflection || current.reflection,
+      priorities: next.priorities.length ? next.priorities : current.priorities,
+      spectrums: next.spectrums.length ? next.spectrums : current.spectrums,
+      acknowledgment: ack,
+    };
+  }
+
+  // Bias toward the latest correction: keep the existing summary and apply only the
+  // add/remove intent voiced in the newest turn. This way "drop anxiety, it's really
+  // work burnout" removes anxiety instead of re-matching it from earlier in the
+  // transcript (where the word still appears).
+  const removedFocuses = new Set<string>();
+  const additions: Priority[] = [];
+  for (const theme of THEME_MAP) {
+    const mentioned = theme.key.filter((k) => latest.includes(k));
+    if (!mentioned.length) continue;
+    if (mentioned.some((k) => keywordRemoved(latest, k))) {
+      removedFocuses.add(theme.focus);
+    } else {
+      additions.push({
+        id: "",
+        title: theme.title,
+        sourceQuote: pickQuote("Person: " + latest, theme.key) || "what you just added",
+        description: theme.desc,
+        focusTags: [theme.focus],
+      });
+    }
+  }
+
+  const kept = current.priorities.filter(
+    (p) => !p.focusTags.some((f) => removedFocuses.has(f)),
+  );
+  const focuses = new Set(kept.flatMap((p) => p.focusTags));
+  const merged = [...kept];
+  for (const add of additions) {
+    if (add.focusTags.some((f) => focuses.has(f))) continue;
+    merged.push(add);
+    add.focusTags.forEach((f) => focuses.add(f));
+  }
+
+  let priorities = merged.slice(0, 5).map((p, i) => ({ ...p, id: `p-${i}` }));
+  if (!priorities.length) {
+    priorities = [
+      {
+        id: "p-0",
+        title: "Someone who really listens",
+        sourceQuote: "what you shared just now",
+        description: "More than anything, you want to feel genuinely heard.",
+        focusTags: ["identity & self"],
+      },
+    ];
+  }
+
+  // Spectrums: only move an axis when the newest turn voices a fresh preference;
+  // otherwise keep whatever the person already steered.
+  const neutral = deriveSpectrums("");
+  const latestFit = deriveSpectrums("Person: " + latest);
+  const base = current.spectrums.length
+    ? current.spectrums
+    : fallbackSynthesis(transcript).spectrums;
+  const spectrums: Spectrum[] = base.map((s) => {
+    const signal = latestFit[s.id];
+    if (signal && signal.value !== neutral[s.id].value) {
+      return { ...s, value: signal.value, note: signal.note };
+    }
+    return s;
+  });
+
   return {
-    reflection: next.reflection || current.reflection,
-    priorities: next.priorities.length ? next.priorities : current.priorities,
-    spectrums: next.spectrums.length ? next.spectrums : current.spectrums,
-    acknowledgment: "I've updated your summary — take a look.",
+    reflection: current.reflection,
+    priorities,
+    spectrums,
+    acknowledgment: ack,
   };
 }
 
