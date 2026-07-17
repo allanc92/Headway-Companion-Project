@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { INSURANCE_PLANS } from "@/lib/providers";
 import { PinIcon, CardIcon, ChevronDownIcon } from "@/components/ui/icons";
+import { CoachMark } from "./CoachMark";
 
 export function FindCareForm() {
   const router = useRouter();
@@ -75,13 +76,16 @@ export function FindCareForm() {
         </div>
       </div>
 
-      <button
-        type="submit"
-        disabled={submitting}
-        className="flex w-full items-center justify-center rounded-xl bg-forest px-6 py-3 font-medium text-white transition-colors hover:bg-forest-700 disabled:opacity-70 sm:w-auto"
-      >
-        {submitting ? "Opening…" : "Find care"}
-      </button>
+      <div className="relative w-full sm:w-auto">
+        <button
+          type="submit"
+          disabled={submitting}
+          className="flex w-full items-center justify-center rounded-xl bg-forest px-6 py-3 font-medium text-white transition-colors hover:bg-forest-700 disabled:opacity-70 sm:w-auto"
+        >
+          {submitting ? "Opening…" : "Find care"}
+        </button>
+        <CoachMark />
+      </div>
     </form>
   );
 }
