@@ -33,8 +33,9 @@ box. Built as a design + engineering artifact for a Headway product interview.
    updatable compass for the patient.
 
 A fifth, non-negotiable layer — **duty of care** — runs an always-on "Get help now"
-affordance and a tiered crisis-detection model that raises a warm, resourced safety
-overlay.
+affordance (a focused resource panel in the header) and a tiered crisis-detection
+model that gently weaves crisis resources into the companion's own reply, in
+conversational flow, rather than interrupting with a popup.
 
 ---
 
