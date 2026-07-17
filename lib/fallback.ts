@@ -15,7 +15,20 @@ const GENTLE_PROMPTS = [
   "If it helps, you could start with what today has felt like.",
 ];
 
-const SPARK_SIGNALS = ["hard to start", "ask me", "how does this", "not sure what"];
+// Each spark chip gets its own reply so tapping different chips doesn't return
+// the same stale line. Keyed by a substring found in that chip's signal text.
+const SPARK_REPLIES: Record<string, string> = {
+  "hard to start":
+    "That's okay — beginning is often the hardest part, and there's no wrong way in. We don't have to name anything big; even a word or two about how you're feeling right now is more than enough.",
+  "ask me":
+    "Of course. Here's a gentle one, and you can answer however feels right: what's been taking up the most space in your mind lately?",
+  "how does this":
+    "It's simpler than it might look — this is just a space to talk. No forms, no checkboxes. You share whatever's on your mind, I listen and reflect it back, and together we get a clearer sense of what might help. You lead, I'll follow.",
+  "not sure what":
+    "That's completely okay — you really don't need to have it figured out. Most people arrive not quite knowing. If we just talk about what's going on for you, the part about what you need tends to surface on its own.",
+};
+
+const SPARK_SIGNALS = Object.keys(SPARK_REPLIES);
 
 /**
  * Offline stand-in for the model's readiness judgment. Without the LLM we can't
@@ -44,9 +57,9 @@ export function fallbackCompanionReply(userTexts: string[]): string {
   const turn = userTexts.length;
 
   let reply: string;
-  if (SPARK_SIGNALS.some((s) => last.includes(s))) {
-    reply =
-      "That's okay — most people don't quite know where to begin. There's no wrong way in. We could start small: what's today been like for you?";
+  const sparkSignal = SPARK_SIGNALS.find((s) => last.includes(s));
+  if (sparkSignal) {
+    reply = SPARK_REPLIES[sparkSignal];
   } else if (turn <= 1) {
     reply =
       "Thank you for saying that — it takes something to put it into words. I'm here, and there's no rush. What feels most tangled up in it right now?";
