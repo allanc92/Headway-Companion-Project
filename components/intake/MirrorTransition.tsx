@@ -21,8 +21,8 @@ export function MirrorTransition() {
     <div className="flex min-h-[calc(100dvh-8rem)] flex-col items-center justify-center px-6 text-center">
       <div className="relative flex h-24 w-24 items-center justify-center">
         <span className="absolute inset-0 animate-breathe rounded-full bg-mint" />
-        <span className="absolute inset-2 animate-breathe rounded-full bg-mint-200 [animation-delay:0.4s]" />
-        <FeatherIcon width={34} height={34} className="relative text-feather" />
+        <span className="absolute inset-2 animate-breathe rounded-full bg-hairline-strong [animation-delay:0.4s]" />
+        <FeatherIcon width={34} height={34} className="relative text-forest" />
       </div>
 
       <p

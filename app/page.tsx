@@ -1,148 +1,116 @@
-import Link from "next/link";
-import { SiteHeader } from "@/components/home/SiteHeader";
 import { FindCareForm } from "@/components/home/FindCareForm";
 import { HeroArt } from "@/components/home/HeroArt";
+import { SiteHeader } from "@/components/home/SiteHeader";
+import { SupportArt } from "@/components/home/SupportArt";
 import { Wordmark } from "@/components/home/Wordmark";
-import { SparkIcon, HeartIcon, ShieldIcon } from "@/components/ui/icons";
+import { ArrowIcon, CalculatorIcon } from "@/components/ui/icons";
 
-const INSURERS = [
-  "Aetna",
-  "Cigna",
-  "UnitedHealthcare",
-  "Blue Cross Blue Shield",
-  "Optum",
-  "Oscar Health",
-];
-
-const STEPS = [
+const STATS = [
   {
-    icon: SparkIcon,
-    title: "Tell us what's going on",
-    body: "In your own words — a feeling, a moment, a situation. No cold form to fill out.",
+    value: "40M+",
+    label: "sessions held",
+    description:
+      "Millions of meaningful care moments — connecting people to the personalized support they need.",
   },
   {
-    icon: HeartIcon,
-    title: "Co-author your match",
-    body: "We reflect what we hear into priorities that are yours to shape, rank, and edit.",
+    value: "80K+",
+    label: "licensed providers",
+    description:
+      "No matter what you're facing, Headway helps you find a therapist or psychiatrist who's ready to help.",
   },
   {
-    icon: ShieldIcon,
-    title: "Meet your therapist",
-    body: "Covered by your insurance, matched to what matters to you — often within a week.",
+    value: "100+",
+    label: "insurance plans",
+    description:
+      "We're in network with the nation's top insurance plans, so quality care fits your budget.",
   },
 ];
 
 export default function HomePage() {
   return (
-    <div className="min-h-dvh bg-cream">
-      <SiteHeader />
+    <div className="min-h-dvh bg-white">
+      <div className="bg-mint">
+        <SiteHeader />
 
-      {/* Hero */}
-      <section className="relative overflow-hidden">
-        <div className="mx-auto grid max-w-6xl items-center gap-12 px-5 py-14 md:grid-cols-2 md:py-20">
-          <div className="animate-rise">
-            <span className="inline-flex items-center gap-2 rounded-full bg-mint px-3 py-1 text-xs font-medium text-forest-700">
-              <SparkIcon width={14} height={14} /> A calmer way to begin
-            </span>
-            <h1 className="mt-5 font-serif text-[2.6rem] leading-[1.05] tracking-tight text-ink sm:text-[3.4rem]">
-              Find a therapist who takes your insurance.
-            </h1>
-            <p className="mt-5 max-w-md text-lg leading-relaxed text-ink-soft">
-              80,000+ licensed therapists and psychiatrists, all covered by insurance.
-              Meet someone who truly gets you — often within a week.
-            </p>
-
-            <div className="mt-7 max-w-lg">
-              <FindCareForm />
-              <p className="mt-3 pl-1 text-sm text-ink-faint">
-                Most people pay <span className="font-medium text-ink-soft">$0–$30</span> per
-                session with insurance.
-              </p>
-            </div>
-          </div>
-
-          <div className="animate-rise">
-            <HeroArt />
-          </div>
-        </div>
-      </section>
-
-      {/* Insurance strip */}
-      <section className="border-y border-line/70 bg-sand/50">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-center gap-x-8 gap-y-3 px-5 py-6">
-          <span className="text-sm font-medium text-ink-faint">In network with</span>
-          {INSURERS.map((name) => (
-            <span key={name} className="text-sm font-semibold text-ink-soft/90">
-              {name}
-            </span>
-          ))}
-        </div>
-      </section>
-
-      {/* How it works */}
-      <section className="mx-auto max-w-6xl px-5 py-16 md:py-20">
-        <div className="mx-auto max-w-2xl text-center">
-          <h2 className="font-serif text-3xl tracking-tight text-ink sm:text-4xl">
-            Starting therapy shouldn&apos;t feel like paperwork.
-          </h2>
-          <p className="mt-4 text-lg text-ink-soft">
-            Most intake forms ask you to translate your life into checkboxes. We start with
-            a conversation instead.
-          </p>
-        </div>
-
-        <div className="mt-12 grid gap-6 md:grid-cols-3">
-          {STEPS.map((step, i) => (
-            <div
-              key={step.title}
-              className="rounded-3xl border border-line bg-white/70 p-7 shadow-sm"
-            >
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-mint text-forest">
-                <step.icon width={22} height={22} />
-              </div>
-              <p className="mt-5 text-sm font-medium text-ink-faint">Step {i + 1}</p>
-              <h3 className="mt-1 font-serif text-xl text-ink">{step.title}</h3>
-              <p className="mt-2 text-[0.95rem] leading-relaxed text-ink-soft">{step.body}</p>
-            </div>
-          ))}
-        </div>
-
-        <div className="mt-12 text-center">
-          <Link
-            href="/intake"
-            className="inline-flex items-center gap-2 rounded-full bg-forest px-7 py-3.5 font-medium text-mint transition-colors hover:bg-forest-700"
-          >
-            Begin when you&apos;re ready
-          </Link>
-        </div>
-      </section>
-
-      {/* Cost reassurance */}
-      <section className="bg-forest">
-        <div className="mx-auto grid max-w-6xl items-center gap-8 px-5 py-14 md:grid-cols-[1.2fr_1fr]">
+        <section className="mx-auto grid max-w-6xl items-center gap-10 px-5 pb-14 pt-8 md:grid-cols-[1.02fr_0.98fr] md:gap-12 md:pb-20 md:pt-12">
           <div>
-            <h2 className="font-serif text-3xl tracking-tight text-mint sm:text-[2.4rem]">
-              Therapy that&apos;s actually within reach.
-            </h2>
-            <p className="mt-4 max-w-lg text-lg leading-relaxed text-mint/80">
-              Because Headway therapists are in network with your plan, care is often the
-              price of a copay — not a luxury you have to justify.
+            <h1 className="text-balance font-serif text-[clamp(2.65rem,6vw,4.8rem)] leading-[0.98] tracking-[-0.035em] text-ink">
+              80,000+ therapists and psychiatrists. All covered by insurance.
+            </h1>
+            <p className="mt-6 max-w-[30rem] text-pretty text-base leading-7 text-ink-soft sm:text-lg">
+              Pay as low as $0/session. Book with someone who understands your needs, is in
+              network, and fits your schedule.<sup className="text-xs">1</sup>
             </p>
-          </div>
-          <div className="rounded-3xl bg-mint/10 p-8 ring-1 ring-mint/20">
-            <p className="font-serif text-5xl text-mint">$0–$30</p>
-            <p className="mt-2 text-mint/80">average cost per session with insurance</p>
-          </div>
-        </div>
-      </section>
 
-      {/* Footer */}
+            <div className="mt-8 max-w-2xl">
+              <FindCareForm />
+            </div>
+          </div>
+
+          <HeroArt />
+        </section>
+      </div>
+
+      <main className="bg-white">
+        <section className="px-5 py-8 md:py-10">
+          <a
+            href="#"
+            className="mx-auto flex max-w-5xl items-center justify-between gap-5 rounded-3xl bg-sand p-5 transition-colors hover:bg-line/60 sm:p-6"
+          >
+            <span className="flex items-center gap-4">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-mint text-forest">
+                <CalculatorIcon width={22} height={22} />
+              </span>
+              <span>
+                <span className="block font-semibold text-ink">Get a cost estimate</span>
+                <span className="mt-1 block text-sm leading-6 text-ink-soft">
+                  People with insurance pay as low as $0 per session through Headway
+                </span>
+              </span>
+            </span>
+            <ArrowIcon className="shrink-0 text-ink-faint" />
+          </a>
+        </section>
+
+        <section className="mx-auto max-w-6xl px-5 pb-20 pt-10 md:pb-24 md:pt-16">
+          <div className="text-center">
+            <p className="text-xs font-medium uppercase tracking-wider text-ink-faint">
+              THROUGH HEADWAY
+            </p>
+            <h2 className="mt-3 font-serif text-4xl leading-tight tracking-[-0.025em] text-ink sm:text-5xl">
+              Millions have found support
+            </h2>
+          </div>
+
+          <div className="mt-12 grid items-center gap-12 lg:grid-cols-[0.9fr_1.1fr] lg:gap-16">
+            <SupportArt />
+
+            <div>
+              {STATS.map((stat) => (
+                <div
+                  key={stat.value}
+                  className="grid gap-5 border-t border-line py-7 sm:grid-cols-[8.5rem_1fr] sm:gap-8"
+                >
+                  <div>
+                    <p className="font-serif text-5xl leading-none tracking-[-0.03em] text-ink">
+                      {stat.value}
+                    </p>
+                    <p className="mt-2 text-sm text-ink-faint">{stat.label}</p>
+                  </div>
+                  <p className="max-w-xl text-base leading-7 text-ink-soft">{stat.description}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      </main>
+
       <footer className="border-t border-line bg-cream">
         <div className="mx-auto flex max-w-6xl flex-col gap-4 px-5 py-10 sm:flex-row sm:items-center sm:justify-between">
           <Wordmark />
           <p className="max-w-md text-xs leading-relaxed text-ink-faint">
-            Design prototype for interview purposes. Not affiliated with, or endorsed by,
-            Headway. Brand-sympathetic recreation using original, copyright-safe assets.
+            Design prototype for interview purposes. Not affiliated with, or endorsed by, Headway.
+            Brand-sympathetic recreation using original, copyright-safe assets.
           </p>
         </div>
       </footer>

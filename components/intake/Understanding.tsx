@@ -25,18 +25,18 @@ export function Understanding({
   return (
     <div className="space-y-10 py-8">
       <section className="animate-rise">
-        <p className="text-sm font-medium text-feather">The mirror</p>
+        <p className="text-sm font-medium text-forest">The mirror</p>
         <h1 className="mt-2 font-serif text-[1.7rem] leading-snug text-ink sm:text-[2rem]">
           Here&apos;s what I heard.
         </h1>
-        <p className="mt-3 max-w-xl text-[1.08rem] leading-relaxed text-ink-soft">
+        <p className="mt-3 max-w-xl text-[1.08rem] leading-relaxed text-ink-muted">
           {reflection}
         </p>
       </section>
 
       <section className="animate-rise">
         <h2 className="font-serif text-xl text-ink">What matters to you</h2>
-        <p className="mt-1 text-sm text-ink-soft">
+        <p className="mt-1 text-sm text-ink-muted">
           Drag to rank them. Edit the words, remove what doesn&apos;t fit, or add your own —
           these are yours, not ours.
         </p>
@@ -47,7 +47,7 @@ export function Understanding({
 
       <section className="animate-rise">
         <h2 className="font-serif text-xl text-ink">How you want to work together</h2>
-        <p className="mt-1 text-sm text-ink-soft">
+        <p className="mt-1 text-sm text-ink-muted">
           There&apos;s no right answer. Nudge each one until it feels true to you.
         </p>
         <div className="mt-4">
@@ -55,7 +55,7 @@ export function Understanding({
         </div>
       </section>
 
-      <div className="sticky bottom-0 -mx-5 bg-gradient-to-t from-cream via-cream to-transparent px-5 pb-6 pt-3">
+      <div className="sticky bottom-0 -mx-5 chat-composer-fade px-5 pb-6 pt-3">
         <button
           type="button"
           onClick={onFindMatches}

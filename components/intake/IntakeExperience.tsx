@@ -4,11 +4,20 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { IntakeHeader } from "./IntakeHeader";
 import { Conversation } from "./Conversation";
-import { MirrorTransition } from "./MirrorTransition";
-import { Understanding } from "./Understanding";
-import { ProviderResults } from "./ProviderResults";
-import { IntentionArtifact } from "./IntentionArtifact";
 import { SafetyOverlay } from "./SafetyOverlay";
+import {
+  BookingBlock,
+  FindMatchesBlock,
+  FindingMatchesBeat,
+  InlineIntentionCard,
+  InlineProviderResults,
+  PrioritiesBlock,
+  ReflectingBeat,
+  ReflectionBlock,
+  ResumeIntentionPrompt,
+  SpectrumsBlock,
+  WelcomeBackBlock,
+} from "./ThreadBlocks";
 import { useCompanionChat } from "./useCompanionChat";
 import { PROVIDERS } from "@/lib/providers";
 import {
@@ -17,6 +26,7 @@ import {
   clearIntention,
 } from "@/lib/intention-store";
 import type {
+  Booking,
   IntakeContext,
   Intention,
   MatchResult,
@@ -26,25 +36,36 @@ import type {
   Synthesis,
 } from "@/lib/types";
 
-type Phase = "conversation" | "mirror" | "understanding" | "results" | "intention";
+type IntakeStage =
+  | "conversation"
+  | "reflecting"
+  | "understanding"
+  | "matching"
+  | "results"
+  | "booking"
+  | "intention";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** A short held beat before auto-advancing, so the person can take in the
- *  companion's last words rather than being yanked into The Mirror. */
 const READINESS_TRANSITION_MS = 1100;
 
 export function IntakeExperience({ context }: { context: IntakeContext }) {
   const router = useRouter();
   const chat = useCompanionChat();
 
-  const [phase, setPhase] = useState<Phase>("conversation");
+  const [stage, setStage] = useState<IntakeStage>("conversation");
   const [synthesis, setSynthesis] = useState<Synthesis | null>(null);
   const [priorities, setPriorities] = useState<Priority[]>([]);
   const [spectrums, setSpectrums] = useState<Spectrum[]>([]);
-  const [matching, setMatching] = useState(false);
   const [matchResult, setMatchResult] = useState<MatchResult | null>(null);
   const [chosenProviderId, setChosenProviderId] = useState<string | null>(null);
+  const [booking, setBooking] = useState<Booking | null>(null);
+  const [resumable, setResumable] = useState<Intention | null>(null);
+  const [resumed, setResumed] = useState(false);
+  const [timestamps, setTimestamps] = useState(() => {
+    const now = new Date().toISOString();
+    return { createdAt: now, updatedAt: now };
+  });
 
   const [safety, setSafety] = useState<{
     open: boolean;
@@ -52,23 +73,28 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
     manual: boolean;
   }>({ open: false, tier: 0, manual: false });
 
-  const [resumable, setResumable] = useState<Intention | null>(null);
-  const createdAtRef = useRef<string>(new Date().toISOString());
   const transitionedRef = useRef(false);
 
   useEffect(() => {
-    const saved = loadIntention();
-    if (saved?.chosenProviderId) setResumable(saved);
+    let active = true;
+    const id = window.setTimeout(() => {
+      const saved = loadIntention();
+      if (active && saved?.chosenProviderId) setResumable(saved);
+    }, 0);
+
+    return () => {
+      active = false;
+      window.clearTimeout(id);
+    };
   }, []);
 
   const step: 1 | 2 | 3 =
-    phase === "conversation" || phase === "mirror"
+    stage === "conversation" || stage === "reflecting"
       ? 1
-      : phase === "understanding"
+      : stage === "understanding"
         ? 2
         : 3;
 
-  // --- Safety -------------------------------------------------------------
   async function runSafety(text: string) {
     try {
       const recent = chat.messages
@@ -99,22 +125,26 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
     runSafety(text);
   }
 
-  // --- The Mirror ---------------------------------------------------------
   function persist(patch: Partial<Intention>) {
+    const updatedAt = new Date().toISOString();
     const base: Intention = {
-      createdAt: createdAtRef.current,
-      updatedAt: new Date().toISOString(),
+      createdAt: timestamps.createdAt,
+      updatedAt,
       context,
       reflection: synthesis?.reflection ?? "",
       priorities,
       spectrums,
       chosenProviderId: chosenProviderId ?? undefined,
+      booking: booking ?? undefined,
     };
-    saveIntention({ ...base, ...patch, updatedAt: new Date().toISOString() });
+    const next: Intention = { ...base, ...patch, updatedAt };
+
+    saveIntention(next);
+    setTimestamps((prev) => ({ ...prev, updatedAt }));
   }
 
   async function goToMirror() {
-    setPhase("mirror");
+    setStage("reflecting");
     try {
       const [res] = await Promise.all([
         fetch("/api/synthesize", {
@@ -130,38 +160,39 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
       setSynthesis(data);
       setPriorities(data.priorities);
       setSpectrums(data.spectrums);
-      persist({ reflection: data.reflection, priorities: data.priorities, spectrums: data.spectrums });
-      setPhase("understanding");
+      persist({
+        reflection: data.reflection,
+        priorities: data.priorities,
+        spectrums: data.spectrums,
+      });
+      setStage("understanding");
     } catch {
-      setPhase("understanding");
+      transitionedRef.current = false;
+      setStage("conversation");
     }
   }
 
-  // Model-driven transition: when the companion signals sufficient depth
-  // (chat.ready) on a completed turn, move into The Mirror on its own — no
-  // manual affordance. Guardrails: only from the conversation phase, only once,
-  // and never while an elevated safety overlay is asking the person to pause.
   useEffect(() => {
     if (transitionedRef.current) return;
-    if (phase !== "conversation") return;
+    if (stage !== "conversation") return;
     if (!chat.ready || chat.status !== "idle") return;
-    // Never transition out from under a safety overlay — the person is being
-    // asked to pause or is reaching for help. Re-runs once it's dismissed.
     if (safety.open) return;
 
-    // A short held beat so the person can take in the companion's last words.
     const t = setTimeout(() => {
       transitionedRef.current = true;
       goToMirror();
     }, READINESS_TRANSITION_MS);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chat.ready, chat.status, phase, safety.open]);
+  }, [chat.ready, chat.status, stage, safety.open]);
 
-  // --- Matching -----------------------------------------------------------
   async function findMatches() {
-    setMatching(true);
-    persist({ priorities, spectrums });
+    if (priorities.length === 0) return;
+
+    setStage("matching");
+    persist({ priorities, spectrums, chosenProviderId: undefined, booking: undefined });
+    setChosenProviderId(null);
+    setBooking(null);
     try {
       const res = await fetch("/api/match", {
         method: "POST",
@@ -170,19 +201,27 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
       });
       const data: MatchResult = await res.json();
       setMatchResult(data);
-      setPhase("results");
+      setStage("results");
     } catch {
-      /* stay on understanding */
-    } finally {
-      setMatching(false);
+      setStage("understanding");
     }
   }
 
   function chooseProvider(id: string) {
     setChosenProviderId(id);
-    persist({ chosenProviderId: id });
-    setPhase("intention");
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    setBooking(null);
+    setStage("booking");
+    persist({ chosenProviderId: id, booking: undefined });
+  }
+
+  function confirmBooking(nextBooking: Booking) {
+    setBooking(nextBooking);
+    setChosenProviderId(nextBooking.providerId);
+    persist({
+      chosenProviderId: nextBooking.providerId,
+      booking: nextBooking,
+    });
+    setStage("intention");
   }
 
   function restart() {
@@ -192,6 +231,7 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
 
   function resume() {
     if (!resumable) return;
+
     setSynthesis({
       reflection: resumable.reflection,
       priorities: resumable.priorities,
@@ -200,96 +240,121 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
     setPriorities(resumable.priorities);
     setSpectrums(resumable.spectrums);
     setChosenProviderId(resumable.chosenProviderId ?? null);
-    createdAtRef.current = resumable.createdAt;
-    setPhase("intention");
+    setBooking(resumable.booking ?? null);
+    setTimestamps({
+      createdAt: resumable.createdAt,
+      updatedAt: resumable.updatedAt,
+    });
+    setStage("intention");
+    setResumed(true);
     setResumable(null);
+  }
+
+  function editIntention() {
+    setResumed(false);
+    setChosenProviderId(null);
+    setBooking(null);
+    setMatchResult(null);
+    setStage("understanding");
+    persist({ chosenProviderId: undefined, booking: undefined });
   }
 
   const chosenProvider =
     PROVIDERS.find((p) => p.id === chosenProviderId) ?? null;
 
   const currentIntention: Intention = {
-    createdAt: createdAtRef.current,
-    updatedAt: new Date().toISOString(),
+    createdAt: timestamps.createdAt,
+    updatedAt: timestamps.updatedAt,
     context,
     reflection: synthesis?.reflection ?? "",
     priorities,
     spectrums,
     chosenProviderId: chosenProviderId ?? undefined,
+    booking: booking ?? undefined,
   };
 
+  const matching = stage === "matching";
+  const showUnderstanding = Boolean(synthesis) && !resumed;
+  const composerDisabled = stage !== "conversation" || resumed;
+  const progressKey = [
+    stage,
+    synthesis ? "synthesis" : "no-synthesis",
+    matchResult ? `matches-${matchResult.matches.length}` : "no-matches",
+    chosenProviderId ?? "no-provider",
+    booking ? `booking-${booking.date}-${booking.time}` : "no-booking",
+    resumed ? "resumed" : "fresh",
+  ].join(":");
+
+  const afterMessages = (
+    <>
+      {resumable && stage === "conversation" && (
+        <ResumeIntentionPrompt
+          onResume={resume}
+          onDismiss={() => setResumable(null)}
+        />
+      )}
+
+      {resumed && <WelcomeBackBlock />}
+
+      {stage === "reflecting" && <ReflectingBeat />}
+
+      {showUnderstanding && synthesis && (
+        <>
+          <ReflectionBlock reflection={synthesis.reflection} />
+          <PrioritiesBlock priorities={priorities} onChange={setPriorities} />
+          <SpectrumsBlock spectrums={spectrums} onChange={setSpectrums} />
+          {!matchResult && (
+            <FindMatchesBlock
+              disabled={priorities.length === 0}
+              matching={matching}
+              onFindMatches={findMatches}
+            />
+          )}
+        </>
+      )}
+
+      {matching && <FindingMatchesBeat />}
+
+      {matchResult && (
+        <InlineProviderResults
+          result={matchResult}
+          context={context}
+          onChoose={chooseProvider}
+        />
+      )}
+
+      {stage === "booking" && chosenProvider && (
+        <BookingBlock provider={chosenProvider} onConfirm={confirmBooking} />
+      )}
+
+      {stage === "intention" && (
+        <InlineIntentionCard
+          intention={currentIntention}
+          provider={chosenProvider}
+          onEdit={editIntention}
+          onRestart={restart}
+        />
+      )}
+    </>
+  );
+
   return (
-    <div className="min-h-dvh bg-cream">
+    <div className="min-h-dvh chat-canvas">
       <IntakeHeader
         step={step}
         onHelp={() => setSafety({ open: true, tier: 0, manual: true })}
       />
 
-      <main className="mx-auto max-w-3xl px-5">
-        {phase === "conversation" && (
-          <>
-            {resumable && (
-              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-mint-200 bg-mint/40 px-4 py-3">
-                <p className="text-sm text-ink-soft">
-                  Welcome back — you have a saved Intention.
-                </p>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={resume}
-                    className="rounded-full bg-forest px-3.5 py-1.5 text-sm font-medium text-mint hover:bg-forest-700"
-                  >
-                    View it
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setResumable(null)}
-                    className="rounded-full px-3 py-1.5 text-sm text-ink-soft hover:text-ink"
-                  >
-                    Start fresh
-                  </button>
-                </div>
-              </div>
-            )}
-            <Conversation
-              messages={chat.messages}
-              status={chat.status}
-              userTurnCount={chat.userTurnCount}
-              onSend={handleSend}
-            />
-          </>
-        )}
-
-        {phase === "mirror" && <MirrorTransition />}
-
-        {phase === "understanding" && synthesis && (
-          <Understanding
-            reflection={synthesis.reflection}
-            priorities={priorities}
-            spectrums={spectrums}
-            onPrioritiesChange={setPriorities}
-            onSpectrumsChange={setSpectrums}
-            onFindMatches={findMatches}
-            matching={matching}
-          />
-        )}
-
-        {phase === "results" && matchResult && (
-          <ProviderResults
-            result={matchResult}
-            context={context}
-            onChoose={chooseProvider}
-          />
-        )}
-
-        {phase === "intention" && (
-          <IntentionArtifact
-            intention={currentIntention}
-            provider={chosenProvider}
-            onEdit={() => setPhase("understanding")}
-            onRestart={restart}
-          />
-        )}
+      <main className="mx-auto max-w-3xl px-5 pt-8 sm:pt-10">
+        <Conversation
+          messages={chat.messages}
+          status={chat.status}
+          userTurnCount={chat.userTurnCount}
+          onSend={handleSend}
+          afterMessages={afterMessages}
+          progressKey={progressKey}
+          composerDisabled={composerDisabled}
+        />
       </main>
 
       {safety.open && (

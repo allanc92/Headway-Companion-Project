@@ -35,6 +35,17 @@
   --color-sky-ink: #2f5a86;
   --color-feather: #6fb2a6;
 
+  /* Airy intake palette, sampled from the getting-started interstitial */
+  --color-air: #eef6fb;
+  --color-air-wash: #fbfcf8;
+  --color-surface: #fbfefd;
+  --color-surface-2: #f1f8f4;
+  --color-mint-soft: #dff2e7;
+  --color-hairline: #cdded5;
+  --color-hairline-strong: #b9d4c8;
+  --color-ink-cool: #33433d;
+  --color-ink-muted: #52635d;
+
   /* Safety */
   --color-alert: #b4472f;
   --color-alert-soft: #f6e9e4;
@@ -94,6 +105,22 @@
   );
   background-size: 900px 100%;
   animation: var(--animate-shimmer);
+}
+
+@layer utilities {
+  .chat-canvas {
+    background:
+      radial-gradient(circle at 12% 82%, rgba(232, 244, 238, 0.46) 0%, rgba(232, 244, 238, 0.18) 34%, rgba(232, 244, 238, 0) 62%),
+      radial-gradient(circle at 90% 96%, rgba(207, 226, 118, 0.22) 0%, rgba(207, 226, 118, 0.12) 24%, rgba(207, 226, 118, 0) 52%),
+      radial-gradient(ellipse at top, rgba(255, 255, 255, 0.74), rgba(255, 255, 255, 0) 58%),
+      linear-gradient(180deg, #dcebf7 0%, #eef6fb 34%, #fbfcf8 62%, #f3f8df 100%);
+    background-attachment: fixed;
+  }
+
+  .chat-composer-fade {
+    background:
+      linear-gradient(to top, rgba(243, 248, 223, 0.98) 0%, rgba(251, 252, 248, 0.94) 58%, rgba(251, 252, 248, 0) 100%);
+  }
 }
 
 * {

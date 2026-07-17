@@ -77,6 +77,15 @@ export interface Provider {
   bio: string;
 }
 
+export interface Booking {
+  providerId: string;
+  providerName: string;
+  date: string; // ISO yyyy-mm-dd
+  dayLabel: string; // e.g. "Tue, Jun 4"
+  time: string; // e.g. "9:00 AM"
+  modality?: string;
+}
+
 export interface ScoredProvider {
   provider: Provider;
   score: number; // 0-100 soft-fit
@@ -105,6 +114,7 @@ export interface Intention {
   priorities: Priority[];
   spectrums: Spectrum[];
   chosenProviderId?: string;
+  booking?: Booking;
 }
 
 // Controlled vocabulary the synthesis maps priorities onto, and providers list.
