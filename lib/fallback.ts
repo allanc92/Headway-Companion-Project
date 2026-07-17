@@ -8,10 +8,18 @@ import type { SafetyAssessment, SafetyTier, Synthesis } from "./types";
 // ---- Companion (Phase 1) ----------------------------------------------------
 
 const GENTLE_PROMPTS = [
-  "When you're ready, what's been sitting with you most today?",
   "There's no right way to say it. What feels closest to true right now?",
   "What's that been like to carry?",
-  "If it helps, you could start with what today has felt like.",
+  "If it helps, you could stay with whatever feels most present for you.",
+];
+
+// Movement two: once someone has opened up, gently wonder — warmly, never as a list —
+// about the kind of support that might help. Each one reflects first, then asks one soft thing.
+const FIT_PROMPTS = [
+  "It sounds like a lot to hold. I'm curious — when you picture talking to someone about this, would you want them mostly to listen and hold space, or to also offer things to try?",
+  "That helps me understand. Some people want a steady sense of structure each time; others want room to follow whatever comes up. Do you have a feel for which would sit better with you?",
+  "Thank you for that. And in the work itself — are you hoping mostly for some relief in the here-and-now, or to understand the deeper roots of it too?",
+  "That's really helpful to know. Is there anything else that would help you feel at ease with the person you talk to?",
 ];
 
 const SPARK_SIGNALS = ["hard to start", "ask me", "how does this", "not sure what"];
@@ -24,15 +32,19 @@ export function fallbackCompanionReply(userTexts: string[]): string {
     return "That's okay — most people don't quite know where to begin. There's no wrong way in. We could start small: what's today been like for you?";
   }
 
+  // Movement one — help them feel heard.
   if (turn <= 1) {
     return "Thank you for saying that — it takes something to put it into words. I'm here, and there's no rush. What feels most tangled up in it right now?";
   }
   if (turn === 2) {
     return "That makes a lot of sense. It sounds like there's real weight in what you're describing. What part of it feels heaviest?";
   }
-  if (turn === 3) {
-    return "I hear you. Thank you for trusting me with that. As you sit with it, what would you most want to feel different?";
-  }
+
+  // Movement two — once they've opened up, let the same conversation drift toward what kind
+  // of support would help, grown from what they've shared. Never announced, never a list.
+  const fit = FIT_PROMPTS[turn - 3];
+  if (fit) return fit;
+
   return GENTLE_PROMPTS[turn % GENTLE_PROMPTS.length];
 }
 
@@ -142,7 +154,7 @@ export function fallbackSynthesis(transcript: string): Synthesis {
 
   return {
     reflection:
-      "Here's what I'm hearing, in your words — tell me where I've got it wrong. You're carrying something real, and you're being brave by naming it. What matters now is finding someone who meets you where you actually are. These are a first draft — move them, edit them, or throw any out.",
+      "Here's what I'm hearing, in your words — tell me where I've got it wrong. You named something real, and you gave me a sense not just of how it feels but of the kind of support that would help. What matters now is finding someone who meets you where you actually are. These are a first draft — move them, edit them, or throw any out.",
     priorities,
     spectrums: [
       { id: "action_space", leftLabel: "Action-oriented", rightLabel: "Space-holding", value: 55, note: "You seem to want to feel heard first, with tools when you're ready." },

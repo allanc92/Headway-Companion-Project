@@ -30,7 +30,9 @@ export function Conversation({
 
   const visibleMessages = waitingForReply ? messages.slice(0, -1) : messages;
   const showChips = userTurnCount === 0;
-  const showReady = userTurnCount >= 2 && !streaming;
+  // Appear once the conversation has had room to move from feelings toward what would help,
+  // so the person can gracefully close it out — never forced, just available.
+  const showReady = userTurnCount >= 3 && !streaming;
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
