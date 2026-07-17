@@ -6,14 +6,20 @@ import {
   COMPANION_FIT_NUDGE,
   GREETING_TRIGGER,
 } from "@/lib/prompts";
+import {
+  SUMMARY_CONTINUE_ACKNOWLEDGMENT,
+  SUMMARY_READINESS_PROMPT,
+} from "@/lib/copy";
 import { fallbackCompanionReply, fallbackOpening } from "@/lib/fallback";
-import { fitNudgeSafetyNet } from "@/lib/signal";
+import { fitNudgeSafetyNet, mirrorSafetyNet } from "@/lib/signal";
+import { MIRROR_READY_MARKER } from "@/lib/types";
 
 export const maxDuration = 30;
 
 interface IncomingMessage {
   role: "user" | "assistant";
   text: string;
+  excludeFromSynthesis?: boolean;
 }
 
 function streamStringResponse(text: string): Response {
@@ -47,11 +53,34 @@ export async function POST(req: Request): Promise<Response> {
   // The greeting is generated live (via COMPANION_GREETING) so it feels human and
   // varies each visit, instead of a canned line.
   const isOpening = messages.length === 0;
+  const readinessWindowStart = messages.reduce(
+    (start, message, index) =>
+      message.excludeFromSynthesis ? index + 1 : start,
+    0,
+  );
+  const userTexts = messages
+    .slice(readinessWindowStart)
+    .filter((m) => m.role === "user")
+    .map((m) => m.text);
+  const lastMessage = messages[messages.length - 1];
+  const continuingAfterOffer =
+    lastMessage?.role === "user" &&
+    lastMessage.excludeFromSynthesis === true;
 
   if (!hasAzureCreds()) {
     if (isOpening) return streamStringResponse(fallbackOpening());
-    const userTexts = messages.filter((m) => m.role === "user").map((m) => m.text);
+    if (continuingAfterOffer) {
+      return streamStringResponse(SUMMARY_CONTINUE_ACKNOWLEDGMENT);
+    }
     return streamStringResponse(fallbackCompanionReply(userTexts));
+  }
+
+  // If the live model keeps circling past the safety-net threshold, emit one
+  // coherent consent turn instead of another exploratory question.
+  if (!isOpening && mirrorSafetyNet(userTexts)) {
+    return streamStringResponse(
+      `${SUMMARY_READINESS_PROMPT}\n${MIRROR_READY_MARKER}`,
+    );
   }
 
   try {
@@ -67,7 +96,6 @@ export async function POST(req: Request): Promise<Response> {
     // COMPANION_SYSTEM); this hidden nudge is only a SAFETY NET, slipped in if the
     // model is still circling in "feeling heard" after several substantive turns.
     // Both are invisible to the person and never rendered as a step.
-    const userTexts = messages.filter((m) => m.role === "user").map((m) => m.text);
     const system = isOpening
       ? `${COMPANION_SYSTEM}\n\n${COMPANION_GREETING}`
       : fitNudgeSafetyNet(userTexts)
@@ -85,7 +113,9 @@ export async function POST(req: Request): Promise<Response> {
   } catch (err) {
     console.error("[/api/chat] falling back:", err);
     if (isOpening) return streamStringResponse(fallbackOpening());
-    const userTexts = messages.filter((m) => m.role === "user").map((m) => m.text);
+    if (continuingAfterOffer) {
+      return streamStringResponse(SUMMARY_CONTINUE_ACKNOWLEDGMENT);
+    }
     return streamStringResponse(fallbackCompanionReply(userTexts));
   }
 }

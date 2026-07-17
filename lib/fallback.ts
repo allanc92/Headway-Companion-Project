@@ -1,4 +1,5 @@
 import type { Priority, SafetyAssessment, SafetyTier, Spectrum, SpectrumId, Synthesis } from "./types";
+import { SUMMARY_READINESS_PROMPT } from "./copy";
 import { MIRROR_READY_MARKER } from "./types";
 import { isSpark, substantiveTurns, countWords } from "./signal";
 
@@ -118,10 +119,10 @@ export function fallbackCompanionReply(userTexts: string[]): string {
     reply = FIT_PROMPTS[fitIndex] ?? GENTLE_PROMPTS[fitIndex % GENTLE_PROMPTS.length];
   }
 
-  // Append the model-driven readiness signal when depth is sufficient, mirroring
-  // how the live model emits the marker on its own final line.
+  // Append the model-driven signal when depth is sufficient to offer a summary,
+  // mirroring how the live model emits the marker on its own final line.
   if (fallbackReadyForMirror(userTexts)) {
-    return `${reply}\n${MIRROR_READY_MARKER}`;
+    return `${SUMMARY_READINESS_PROMPT}\n${MIRROR_READY_MARKER}`;
   }
   return reply;
 }

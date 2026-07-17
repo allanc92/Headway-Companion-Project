@@ -96,6 +96,39 @@ export function ReflectingBeat() {
   );
 }
 
+export function SummaryReadinessActions({
+  onConfirm,
+  onContinue,
+}: {
+  onConfirm: () => void;
+  onContinue: () => void;
+}) {
+  return (
+    <section
+      aria-label="Choose whether to create your summary"
+      className="animate-rise ml-11 max-w-[46ch] rounded-3xl border border-hairline-strong bg-surface/95 p-2.5 shadow-[0_12px_32px_rgba(47,90,134,0.08)]"
+    >
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <button
+          type="button"
+          onClick={onConfirm}
+          className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-forest px-4 py-3 text-sm font-medium text-mint transition-colors hover:bg-forest-700"
+        >
+          I&apos;m ready for my summary
+          <ArrowIcon width={17} height={17} />
+        </button>
+        <button
+          type="button"
+          onClick={onContinue}
+          className="rounded-2xl px-4 py-3 text-sm font-medium text-ink-muted transition-colors hover:bg-mint-soft/70 hover:text-ink"
+        >
+          Keep talking
+        </button>
+      </div>
+    </section>
+  );
+}
+
 function clampPercent(value: number): number {
   return Math.max(0, Math.min(100, Math.round(value)));
 }

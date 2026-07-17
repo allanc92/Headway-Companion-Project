@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { SUMMARY_READINESS_PROMPT } from "@/lib/copy";
 import { MIRROR_READY_MARKER } from "@/lib/types";
 import { mirrorSafetyNet } from "@/lib/signal";
 import type { ChatMessage, SafetyTier } from "@/lib/types";
@@ -34,12 +35,20 @@ function extractReadiness(raw: string): { text: string; ready: boolean } {
 }
 
 interface StreamOptions {
-  /** Whether to watch for the Mirror-readiness marker (never on the greeting). */
+  /** Whether this turn may trigger a summary-readiness offer. */
   trackReadiness: boolean;
   /** Shown if the stream finishes empty. */
   emptyFallback: string;
   /** Shown if the request fails outright. */
   errorFallback: string;
+}
+
+interface MessageOptions {
+  excludeFromSynthesis?: boolean;
+}
+
+interface SendOptions extends MessageOptions {
+  trackReadiness?: boolean;
 }
 
 export function useCompanionChat() {
@@ -75,7 +84,7 @@ export function useCompanionChat() {
     async (assistantId: string, body: unknown, opts: StreamOptions) => {
       setStatus("streaming");
       busyRef.current = true;
-      if (opts.trackReadiness) setReady(false);
+      setReady(false);
 
       try {
         const res = await fetch("/api/chat", {
@@ -108,14 +117,37 @@ export function useCompanionChat() {
           );
         }
         // Primary signal: the model appends the readiness marker when it judges the
-        // conversation is deep enough for the Mirror. Safety net: if it never does but
-        // the conversation has run enough substantive turns, force the transition so it
-        // can't circle forever. Only while tracking readiness (never on the greeting).
+        // conversation is deep enough to offer a summary. The safety net ensures the
+        // offer eventually appears if the conversation otherwise circles forever.
         if (opts.trackReadiness) {
+          // A declined offer starts a fresh safety-net window. The model can still
+          // offer sooner, but the fallback counter cannot immediately override the
+          // person's choice to keep talking.
+          const readinessWindowStart = messagesRef.current.reduce(
+            (start, message, index) =>
+              message.excludeFromSynthesis ? index + 1 : start,
+            0,
+          );
           const userTexts = messagesRef.current
-            .filter((m) => m.role === "user")
+            .slice(readinessWindowStart)
+            .filter((m) => m.role === "user" && !m.excludeFromSynthesis)
             .map((m) => m.text);
-          if (finalReady || sawReady || mirrorSafetyNet(userTexts)) setReady(true);
+          if (finalReady || sawReady || mirrorSafetyNet(userTexts)) {
+            // Keep readiness in the assistant turn already on screen so the
+            // person never sees two conflicting questions back-to-back.
+            commit((prev) =>
+              prev.map((message) =>
+                message.id === assistantId
+                  ? {
+                      ...message,
+                      text: SUMMARY_READINESS_PROMPT,
+                      excludeFromSynthesis: true,
+                    }
+                  : message,
+              ),
+            );
+            setReady(true);
+          }
         }
       } catch {
         commit((prev) =>
@@ -153,20 +185,39 @@ export function useCompanionChat() {
   }, [greet]);
 
   const send = useCallback(
-    async (text: string) => {
+    async (text: string, options: SendOptions = {}) => {
       const trimmed = text.trim();
       if (!trimmed || busyRef.current) return;
 
-      const userMsg: ChatMessage = { id: genId(), role: "user", text: trimmed };
+      const userMsg: ChatMessage = {
+        id: genId(),
+        role: "user",
+        text: trimmed,
+        excludeFromSynthesis: options.excludeFromSynthesis,
+      };
       const convo = [...messagesRef.current, userMsg];
       const assistantId = genId();
-      commit(() => [...convo, { id: assistantId, role: "assistant", text: "" }]);
+      commit(() => [
+        ...convo,
+        {
+          id: assistantId,
+          role: "assistant",
+          text: "",
+          excludeFromSynthesis: options.excludeFromSynthesis,
+        },
+      ]);
 
       await runStream(
         assistantId,
-        { messages: convo.map((m) => ({ role: m.role, text: m.text })) },
         {
-          trackReadiness: true,
+          messages: convo.map((m) => ({
+            role: m.role,
+            text: m.text,
+            excludeFromSynthesis: m.excludeFromSynthesis,
+          })),
+        },
+        {
+          trackReadiness: options.trackReadiness ?? true,
           emptyFallback: "I'm here with you. Take your time.",
           errorFallback:
             "I'm still here with you. I had trouble responding just then — whenever you're ready, try again.",
@@ -177,8 +228,13 @@ export function useCompanionChat() {
   );
 
   const addAssistantMessage = useCallback(
-    (text: string) => {
-      const msg: ChatMessage = { id: genId(), role: "assistant", text };
+    (text: string, options: MessageOptions = {}) => {
+      const msg: ChatMessage = {
+        id: genId(),
+        role: "assistant",
+        text,
+        excludeFromSynthesis: options.excludeFromSynthesis,
+      };
       const next = [...messagesRef.current, msg];
       commit(() => next);
       return next;
@@ -187,10 +243,15 @@ export function useCompanionChat() {
   );
 
   const addUserMessage = useCallback(
-    (text: string) => {
+    (text: string, options: MessageOptions = {}) => {
       const trimmed = text.trim();
       if (!trimmed) return messagesRef.current;
-      const msg: ChatMessage = { id: genId(), role: "user", text: trimmed };
+      const msg: ChatMessage = {
+        id: genId(),
+        role: "user",
+        text: trimmed,
+        excludeFromSynthesis: options.excludeFromSynthesis,
+      };
       const next = [...messagesRef.current, msg];
       commit(() => next);
       return next;
@@ -199,10 +260,6 @@ export function useCompanionChat() {
   );
 
   const userTurnCount = messages.filter((m) => m.role === "user").length;
-
-  // Latest transcript, read straight from the ref so callers (e.g. a synth retry)
-  // always see messages added since their last read, not a stale snapshot.
-  const getMessages = useCallback(() => messagesRef.current, []);
 
   /**
    * Weave crisis resources into the most recent assistant turn so they render as
@@ -228,5 +285,14 @@ export function useCompanionChat() {
     [commit],
   );
 
-  return { messages, status, send, addAssistantMessage, addUserMessage, getMessages, userTurnCount, ready, flagSafety };
+  return {
+    messages,
+    status,
+    send,
+    addAssistantMessage,
+    addUserMessage,
+    userTurnCount,
+    ready,
+    flagSafety,
+  };
 }

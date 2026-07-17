@@ -4,8 +4,9 @@
  * Sentinel the companion model appends — on its own final line — the moment it
  * judges the conversation has reached sufficient depth to synthesize. The chat
  * route streams it through untouched; the client strips it from the visible
- * reply and uses it as the model-driven signal to move into The Mirror. Kept
- * deliberately unusual so it can never collide with natural language.
+ * reply and uses it as the model-driven signal to offer The Mirror. The person
+ * still chooses whether to continue. Kept deliberately unusual so it can never
+ * collide with natural language.
  */
 export const MIRROR_READY_MARKER = "<<READY_FOR_MIRROR>>";
 
@@ -15,6 +16,8 @@ export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
   text: string;
+  /** Keeps conversational UI controls visible without treating them as care context. */
+  excludeFromSynthesis?: boolean;
   /**
    * When set, the app has woven crisis resources into this assistant turn
    * (tiers 1–3). Rendered inline within the message bubble as Huey's own words —

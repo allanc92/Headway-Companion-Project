@@ -53,9 +53,9 @@ captures hard filters           Expression           a summary you can     match
   engine.
 - **Conversation (Expression)** — the AI speaks first to break the blank-page freeze, then
   streams a warm, unhurried dialogue. Spark chips summon help rather than prefill answers.
-- **Understanding** — Huey tells you it's gathering what it heard, then a held pause
-  synthesizes the transcript into a single summary card: a short reflection, the priorities
-  that matter most, and where you land on a few working-style spectrums.
+- **Understanding** — once Huey has enough context, it asks whether you're ready for a
+  summary or want to keep talking. Only after confirmation does a held pause synthesize
+  the transcript into a short reflection, priorities, and working-style spectrums.
 - **Refine by chatting** — if anything feels off you just say so in the chat and Huey
   updates the summary (`POST /api/refine`); most people trust it and move on.
 - **Matches** — deterministic matches appear as a horizontal carousel of therapist cards
