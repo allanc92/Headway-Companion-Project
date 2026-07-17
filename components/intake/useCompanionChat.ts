@@ -176,7 +176,33 @@ export function useCompanionChat() {
     [commit, runStream],
   );
 
+  const addAssistantMessage = useCallback(
+    (text: string) => {
+      const msg: ChatMessage = { id: genId(), role: "assistant", text };
+      const next = [...messagesRef.current, msg];
+      commit(() => next);
+      return next;
+    },
+    [commit],
+  );
+
+  const addUserMessage = useCallback(
+    (text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed) return messagesRef.current;
+      const msg: ChatMessage = { id: genId(), role: "user", text: trimmed };
+      const next = [...messagesRef.current, msg];
+      commit(() => next);
+      return next;
+    },
+    [commit],
+  );
+
   const userTurnCount = messages.filter((m) => m.role === "user").length;
+
+  // Latest transcript, read straight from the ref so callers (e.g. a synth retry)
+  // always see messages added since their last read, not a stale snapshot.
+  const getMessages = useCallback(() => messagesRef.current, []);
 
   /**
    * Weave crisis resources into the most recent assistant turn so they render as
@@ -202,5 +228,5 @@ export function useCompanionChat() {
     [commit],
   );
 
-  return { messages, status, send, userTurnCount, ready, flagSafety };
+  return { messages, status, send, addAssistantMessage, addUserMessage, getMessages, userTurnCount, ready, flagSafety };
 }

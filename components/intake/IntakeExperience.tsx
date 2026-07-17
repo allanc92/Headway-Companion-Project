@@ -7,19 +7,18 @@ import { Conversation } from "./Conversation";
 import { SafetyOverlay } from "./SafetyOverlay";
 import {
   BookingBlock,
-  FindMatchesBlock,
   FindingMatchesBeat,
   InlineIntentionCard,
-  InlineProviderResults,
-  PrioritiesBlock,
   ReflectingBeat,
-  ReflectionBlock,
   ResumeIntentionPrompt,
-  SpectrumsBlock,
+  SummaryUnderstandingCard,
+  UpdatingSummaryBeat,
   WelcomeBackBlock,
 } from "./ThreadBlocks";
+import { InlineProviderResults } from "./InlineProviderResults";
 import { useCompanionChat } from "./useCompanionChat";
 import { PROVIDERS } from "@/lib/providers";
+import { HANDOFF_LINE } from "@/lib/copy";
 import {
   loadIntention,
   saveIntention,
@@ -62,6 +61,7 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
   const [booking, setBooking] = useState<Booking | null>(null);
   const [resumable, setResumable] = useState<Intention | null>(null);
   const [resumed, setResumed] = useState(false);
+  const [refining, setRefining] = useState(false);
   const [timestamps, setTimestamps] = useState(() => {
     const now = new Date().toISOString();
     return { createdAt: now, updatedAt: now };
@@ -70,13 +70,16 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
   const [helpOpen, setHelpOpen] = useState(false);
   const shownTierRef = useRef<SafetyTier>(0);
 
-  // True while /api/safety is still classifying the latest user turn. The Mirror
-  // transition must wait on this: the mechanical mirrorSafetyNet backstop can set
-  // `ready` before the safety tier lands, so without this gate a slow safety call
-  // could let goToMirror() advance mid-crisis.
-  const [safetyPending, setSafetyPending] = useState(false);
+  // Count every in-flight classification rather than toggling a boolean: the user
+  // can send again after chat streaming ends while an earlier safety call is still
+  // pending, and whichever request finishes first must not clear the Mirror gate.
+  const [pendingSafetyRequests, setPendingSafetyRequests] = useState(0);
 
   const transitionedRef = useRef(false);
+  // The handoff line is posted once per intake; on a synth retry we re-read the
+  // latest transcript instead of reusing a cached array, so user turns added during
+  // an outage aren't dropped from the summary.
+  const handoffPostedRef = useRef(false);
 
   useEffect(() => {
     let active = true;
@@ -99,6 +102,7 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
         : 3;
 
   async function runSafety(text: string) {
+    setPendingSafetyRequests((count) => count + 1);
     try {
       const recent = chat.messages
         .slice(-4)
@@ -118,14 +122,17 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
     } catch {
       /* fail open — never block the person */
     } finally {
-      setSafetyPending(false);
+      setPendingSafetyRequests((count) => count - 1);
     }
   }
 
   function handleSend(text: string) {
-    setSafetyPending(true);
-    chat.send(text);
-    runSafety(text);
+    void runSafety(text);
+    if (stage === "understanding") {
+      void refineSummary(text);
+      return;
+    }
+    void chat.send(text);
   }
 
   function persist(patch: Partial<Intention>) {
@@ -147,6 +154,13 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
   }
 
   async function goToMirror() {
+    if (!handoffPostedRef.current) {
+      chat.addAssistantMessage(HANDOFF_LINE);
+      handoffPostedRef.current = true;
+    }
+    // Read the freshest transcript (includes the handoff line plus anything the
+    // person added since a previous failed attempt) so retries never omit new turns.
+    const transcript = chat.getMessages();
     setStage("reflecting");
     try {
       const [res] = await Promise.all([
@@ -154,7 +168,7 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            messages: chat.messages.map((m) => ({ role: m.role, text: m.text })),
+            messages: transcript.map((m) => ({ role: m.role, text: m.text })),
           }),
         }),
         sleep(2600),
@@ -175,14 +189,62 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
     }
   }
 
+  async function refineSummary(text: string) {
+    if (!synthesis || refining) return;
+
+    const current: Synthesis = {
+      reflection: synthesis.reflection,
+      priorities,
+      spectrums,
+    };
+    const transcript = chat.addUserMessage(text);
+    setRefining(true);
+
+    try {
+      const res = await fetch("/api/refine", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: transcript.map((m) => ({ role: m.role, text: m.text })),
+          synthesis: current,
+        }),
+      });
+      if (!res.ok) throw new Error("Refine failed");
+      const data: Synthesis & { acknowledgment?: string } = await res.json();
+      const next: Synthesis = {
+        reflection: data.reflection,
+        priorities: data.priorities,
+        spectrums: data.spectrums,
+      };
+      setSynthesis(next);
+      setPriorities(next.priorities);
+      setSpectrums(next.spectrums);
+      persist({
+        reflection: next.reflection,
+        priorities: next.priorities,
+        spectrums: next.spectrums,
+      });
+      chat.addAssistantMessage(
+        data.acknowledgment?.trim() ||
+          "I've updated your summary — take a look and tell me if anything still feels off.",
+      );
+    } catch {
+      chat.addAssistantMessage(
+        "I had trouble updating that just now, but I'm still here — you can try telling me again.",
+      );
+    } finally {
+      setRefining(false);
+    }
+  }
+
   useEffect(() => {
     if (transitionedRef.current) return;
     if (stage !== "conversation") return;
     if (!chat.ready || chat.status !== "idle") return;
     if (helpOpen) return;
-    // Hold the transition until the latest turn's safety check settles, so a slow
-    // classification can't let the backstop advance before a crisis tier is flagged.
-    if (safetyPending) return;
+    // Hold the transition until every outstanding safety check settles, so
+    // overlapping classifications cannot clear the gate out of order.
+    if (pendingSafetyRequests > 0) return;
     const lastMessage = chat.messages[chat.messages.length - 1];
     if (lastMessage?.role === "assistant" && lastMessage.safetyTier) return;
 
@@ -192,10 +254,19 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
     }, READINESS_TRANSITION_MS);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chat.ready, chat.status, stage, helpOpen, safetyPending, chat.messages]);
+  }, [
+    chat.ready,
+    chat.status,
+    stage,
+    helpOpen,
+    pendingSafetyRequests,
+    chat.messages,
+  ]);
 
   async function findMatches() {
-    if (priorities.length === 0) return;
+    // Guard on refining too: a pending correction can still replace the summary,
+    // so matching now would use stale priorities/spectrums.
+    if (priorities.length === 0 || refining) return;
 
     setStage("matching");
     persist({ priorities, spectrums, chosenProviderId: undefined, booking: undefined });
@@ -283,7 +354,14 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
 
   const matching = stage === "matching";
   const showUnderstanding = Boolean(synthesis) && !resumed;
-  const composerDisabled = stage !== "conversation" || resumed;
+  const composerDisabled =
+    (stage !== "conversation" && stage !== "understanding") || resumed || refining;
+  const composerPlaceholder =
+    stage === "understanding"
+      ? refining
+        ? "I’m updating that now…"
+        : "Want to change anything? Just tell me…"
+      : undefined;
   const progressKey = [
     stage,
     synthesis ? "synthesis" : "no-synthesis",
@@ -291,6 +369,7 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
     chosenProviderId ?? "no-provider",
     booking ? `booking-${booking.date}-${booking.time}` : "no-booking",
     resumed ? "resumed" : "fresh",
+    refining ? "refining" : "not-refining",
   ].join(":");
 
   const afterMessages = (
@@ -308,16 +387,16 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
 
       {showUnderstanding && synthesis && (
         <>
-          <ReflectionBlock reflection={synthesis.reflection} />
-          <PrioritiesBlock priorities={priorities} onChange={setPriorities} />
-          <SpectrumsBlock spectrums={spectrums} onChange={setSpectrums} />
-          {!matchResult && (
-            <FindMatchesBlock
-              disabled={priorities.length === 0}
-              matching={matching}
-              onFindMatches={findMatches}
-            />
-          )}
+          <SummaryUnderstandingCard
+            reflection={synthesis.reflection}
+            priorities={priorities}
+            spectrums={spectrums}
+            disabled={priorities.length === 0 || refining}
+            matching={matching}
+            onFindMatches={findMatches}
+            showAction={!matchResult}
+          />
+          {refining && <UpdatingSummaryBeat />}
         </>
       )}
 
@@ -362,6 +441,7 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
           afterMessages={afterMessages}
           progressKey={progressKey}
           composerDisabled={composerDisabled}
+          composerPlaceholder={composerPlaceholder}
         />
       </main>
 

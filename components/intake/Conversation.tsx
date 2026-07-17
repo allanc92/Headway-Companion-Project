@@ -24,6 +24,7 @@ export function Conversation({
   afterMessages,
   progressKey,
   composerDisabled = false,
+  composerPlaceholder,
 }: {
   messages: ChatMessage[];
   status: ChatStatus;
@@ -32,6 +33,7 @@ export function Conversation({
   afterMessages?: ReactNode;
   progressKey?: string;
   composerDisabled?: boolean;
+  composerPlaceholder?: string;
 }) {
   const endRef = useRef<HTMLDivElement>(null);
   const shouldStickToBottomRef = useRef(true);
@@ -126,11 +128,12 @@ export function Conversation({
           onSend={onSend}
           disabled={streaming || composerDisabled}
           placeholder={
-            composerDisabled
+            composerPlaceholder ??
+            (composerDisabled
               ? "Use the choices in the thread below…"
               : userTurnCount === 0
               ? "Whatever's on your mind. There's no right way to begin…"
-              : "Take your time…"
+              : "Take your time…")
           }
         />
       </div>

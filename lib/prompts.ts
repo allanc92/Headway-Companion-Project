@@ -140,6 +140,28 @@ Produce:
 Be gentle, be accurate to what they actually said, and never invent distress or preferences they didn't express. The Intention belongs to the person; do not say or imply Headway will automatically share, send, or deliver it to a therapist. If sharing comes up, frame it only as the user's choice.`;
 }
 
+export function buildRefinePrompt(
+  transcript: string,
+  currentSynthesisJson: string,
+  focusAreas: readonly string[],
+): string {
+  return `A person is reviewing Huey's summary at the start of Headway and has just typed an update or correction in the chat. Revise the current summary so it reflects the full conversation and their latest request.
+
+CURRENT SUMMARY JSON
+${currentSynthesisJson}
+
+FULL TRANSCRIPT
+${transcript}
+
+Produce the updated structured summary:
+1) reflection — 2–4 warm sentences in plain language, revised only as much as needed.
+2) priorities — 3 to 5 items. Each has: "title", "sourceQuote", "description", and "focusTags" chosen ONLY from this list: ${focusAreas.join(", ")}.
+3) spectrums — exactly one item for each id ("action_space", "structure", "depth"), each with a value 0–100 and a one-line "note". 0/100 meanings: action_space (0 = wants tools & action, 100 = wants space to be heard); structure (0 = wants structured sessions, 100 = wants open exploration); depth (0 = practical & present-focused, 100 = insight & depth).
+4) acknowledgment — one short, warm sentence in Huey's first-person voice saying you updated it. No clinical language, no markdown.
+
+Honor the person's correction even if it overrides an earlier inference. Keep everything grounded in what they actually said. Do not imply Headway will automatically share, send, or deliver this to a therapist.`;
+}
+
 export function buildMatchReasonPrompt(
   providerName: string,
   providerBlurbSource: string,

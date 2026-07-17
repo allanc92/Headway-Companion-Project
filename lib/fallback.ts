@@ -1,4 +1,4 @@
-import type { SafetyAssessment, SafetyTier, Synthesis } from "./types";
+import type { Priority, SafetyAssessment, SafetyTier, Spectrum, SpectrumId, Synthesis } from "./types";
 import { MIRROR_READY_MARKER } from "./types";
 import { isSpark, substantiveTurns, countWords } from "./signal";
 
@@ -190,13 +190,43 @@ const THEME_MAP: { key: string[]; focus: string; title: string; desc: string }[]
   { key: ["family", "mom", "dad", "parent", "sibling", "kids", "children"], focus: "family", title: "Untangling family dynamics", desc: "You want help with the relationships you were raised in or are raising." },
 ];
 
+// Parse the "Speaker: ..." transcript into whole turns. buildTranscript only
+// prefixes the FIRST physical line of a message, so a Shift+Enter continuation
+// line arrives without a "Person:"/"Companion:" marker; we attach such lines to
+// the current turn instead of dropping them, keeping multi-line messages intact
+// for the keyword, spectrum, and quote heuristics below.
+type TranscriptTurn = { speaker: "person" | "companion"; text: string };
+
+function parseTurns(transcript: string): TranscriptTurn[] {
+  const turns: TranscriptTurn[] = [];
+  for (const line of transcript.split("\n")) {
+    const m = /^\s*(Person|Companion):\s?(.*)$/i.exec(line);
+    if (m) {
+      turns.push({ speaker: /^person$/i.test(m[1]) ? "person" : "companion", text: m[2] });
+    } else if (turns.length) {
+      turns[turns.length - 1].text += "\n" + line;
+    }
+  }
+  return turns;
+}
+
+/** The person's own turns (continuation lines included, newlines preserved). */
+function personTurns(transcript: string): string[] {
+  return parseTurns(transcript)
+    .filter((t) => t.speaker === "person")
+    .map((t) => t.text);
+}
+
 function pickQuote(transcript: string, keys: string[]): string {
-  const sentences = transcript.split(/(?<=[.!?])\s+|\n+/);
-  for (const s of sentences) {
-    const low = s.toLowerCase();
-    if (keys.some((k) => low.includes(k))) {
-      const cleaned = s.replace(/^Person:\s*/i, "").trim();
-      if (cleaned.length > 4) return truncate(cleaned, 90);
+  // Draw the quote only from the person's own turns, never the companion's, so
+  // the "in your words" source line can't accidentally surface Huey's copy.
+  for (const turn of personTurns(transcript)) {
+    for (const s of turn.split(/(?<=[.!?])\s+|\n+/)) {
+      const low = s.toLowerCase();
+      if (keys.some((k) => low.includes(k))) {
+        const cleaned = s.trim();
+        if (cleaned.length > 4) return truncate(cleaned, 90);
+      }
     }
   }
   return "";
@@ -206,16 +236,69 @@ function truncate(s: string, n: number): string {
   return s.length > n ? s.slice(0, n - 1).trimEnd() + "…" : s;
 }
 
-// Person-only text (the transcript marks user turns "Person:"), so fit-preference
-// keyword checks never accidentally match the companion's own fit questions.
+// Person-only text (continuation lines of multi-line messages included), so
+// fit-preference keyword checks see everything the person said and never match
+// the companion's own fit questions. Whitespace collapses for clean matching.
 function personText(transcript: string): string {
-  return transcript
-    .split(/\n+/)
-    .filter((line) => /^\s*Person:/i.test(line))
-    .map((line) => line.replace(/^\s*Person:\s*/i, ""))
-    .join(" ")
-    .toLowerCase();
+  return personTurns(transcript).join(" ").replace(/\s+/g, " ").toLowerCase();
 }
+
+/**
+ * Fit axes for the offline reading. Each axis has a low side (0) and high side
+ * (100) with the keywords that voice each, so both the synthesis reading and the
+ * refine correction path share one source of truth.
+ */
+type SpectrumAxis = {
+  id: SpectrumId;
+  low: { keys: string[]; value: number; note: string };
+  high: { keys: string[]; value: number; note: string };
+  neutral: { value: number; note: string };
+};
+
+const SPECTRUM_AXES: SpectrumAxis[] = [
+  {
+    id: "action_space", // 0 = tools & action, 100 = space to be heard.
+    low: {
+      keys: ["things to try", "tools", "techniques", "strategies", "practical", "advice", "guidance", "homework", "exercises", "worksheets", "something to do", "action"],
+      value: 25,
+      note: "You said you'd want someone who also offers things to try, not only listening.",
+    },
+    high: {
+      keys: ["listen", "hold space", "be heard", "feel heard", "just talk", "vent", "space to", "someone who hears"],
+      value: 80,
+      note: "You said you mostly want someone who listens and holds space.",
+    },
+    neutral: { value: 55, note: "A balance of being heard and getting tools when you're ready." },
+  },
+  {
+    id: "structure", // 0 = structured sessions, 100 = open exploration.
+    low: {
+      keys: ["structure", "agenda", "a plan", "clear steps", "goals", "direction", "framework", "organized", "each time", "guided"],
+      value: 25,
+      note: "You leaned toward steady structure and a clear sense of direction.",
+    },
+    high: {
+      keys: ["follow whatever", "wherever it goes", "room to", "unstructured", "see what comes up", "let it flow", "go where it", "open-ended"],
+      value: 78,
+      note: "You leaned toward open room to follow whatever surfaces.",
+    },
+    neutral: { value: 50, note: "A mix of gentle direction and room to follow what comes up." },
+  },
+  {
+    id: "depth", // 0 = practical & present, 100 = insight & depth.
+    low: {
+      keys: ["relief", "cope", "right now", "day to day", "day-to-day", "get through", "manage", "here and now", "here-and-now", "practical"],
+      value: 28,
+      note: "You leaned toward practical relief in the here-and-now.",
+    },
+    high: {
+      keys: ["deeper", "roots", "understand why", "root cause", "the past", "childhood", "patterns", "insight", "make sense of", "underneath"],
+      value: 80,
+      note: "You leaned toward understanding the deeper roots, not just relief.",
+    },
+    neutral: { value: 55, note: "Both some relief now and understanding the deeper why." },
+  },
+];
 
 /**
  * Lightweight offline reading of the fit preferences the person actually voiced,
@@ -225,37 +308,25 @@ function personText(transcript: string): string {
  */
 function deriveSpectrums(
   transcript: string,
-): Record<"action_space" | "structure" | "depth", { value: number; note: string }> {
+): Record<SpectrumId, { value: number; note: string }> {
   const t = personText(transcript);
-  const has = (...words: string[]) => words.some((w) => t.includes(w));
-
-  // action_space: 0 = tools & action, 100 = space to be heard.
-  const wantsTools = has("things to try", "tools", "techniques", "strategies", "practical", "advice", "guidance", "homework", "exercises", "worksheets", "something to do", "action");
-  const wantsSpace = has("listen", "hold space", "be heard", "feel heard", "just talk", "vent", "space to", "someone who hears");
-  let action_space = { value: 55, note: "A balance of being heard and getting tools when you're ready." };
-  if (wantsSpace && !wantsTools) action_space = { value: 80, note: "You said you mostly want someone who listens and holds space." };
-  else if (wantsTools && !wantsSpace) action_space = { value: 25, note: "You said you'd want someone who also offers things to try, not only listening." };
-
-  // structure: 0 = structured sessions, 100 = open exploration.
-  const wantsStructure = has("structure", "agenda", "a plan", "clear steps", "goals", "direction", "framework", "organized", "each time", "guided");
-  const wantsOpen = has("follow whatever", "wherever it goes", "room to", "unstructured", "see what comes up", "let it flow", "go where it", "open-ended");
-  let structure = { value: 50, note: "A mix of gentle direction and room to follow what comes up." };
-  if (wantsStructure && !wantsOpen) structure = { value: 25, note: "You leaned toward steady structure and a clear sense of direction." };
-  else if (wantsOpen && !wantsStructure) structure = { value: 78, note: "You leaned toward open room to follow whatever surfaces." };
-
-  // depth: 0 = practical & present, 100 = insight & depth.
-  const wantsPresent = has("relief", "cope", "right now", "day to day", "day-to-day", "get through", "manage", "here and now", "here-and-now", "practical");
-  const wantsDepth = has("deeper", "roots", "understand why", "root cause", "the past", "childhood", "patterns", "insight", "make sense of", "underneath");
-  let depth = { value: 55, note: "Both some relief now and understanding the deeper why." };
-  if (wantsPresent && !wantsDepth) depth = { value: 28, note: "You leaned toward practical relief in the here-and-now." };
-  else if (wantsDepth && !wantsPresent) depth = { value: 80, note: "You leaned toward understanding the deeper roots, not just relief." };
-
-  return { action_space, structure, depth };
+  const has = (keys: string[]) => keys.some((w) => t.includes(w));
+  const out = {} as Record<SpectrumId, { value: number; note: string }>;
+  for (const ax of SPECTRUM_AXES) {
+    const low = has(ax.low.keys);
+    const high = has(ax.high.keys);
+    const pick = low && !high ? ax.low : high && !low ? ax.high : ax.neutral;
+    out[ax.id] = { value: pick.value, note: pick.note };
+  }
+  return out;
 }
 
 export function fallbackSynthesis(transcript: string): Synthesis {
-  const low = transcript.toLowerCase();
-  const matched = THEME_MAP.filter((t) => t.key.some((k) => low.includes(k)));
+  // Match themes against only the person's words. The transcript also carries the
+  // companion's turns (e.g. the handoff line, which says "changed"), and those
+  // must never inject a theme the person never actually raised.
+  const personLow = personText(transcript);
+  const matched = THEME_MAP.filter((t) => t.key.some((k) => personLow.includes(k)));
   const chosen = (matched.length ? matched : [THEME_MAP[1], THEME_MAP[7]]).slice(0, 4);
 
   const fit = deriveSpectrums(transcript);
@@ -281,13 +352,165 @@ export function fallbackSynthesis(transcript: string): Synthesis {
 
   return {
     reflection:
-      "Here's what I'm hearing, in your words — tell me where I've got it wrong. You named something real, and you gave me a sense not just of how it feels but of the kind of support that would help. What matters now is finding someone who meets you where you actually are. These are a first draft — move them, edit them, or throw any out.",
+      "Here's what I'm hearing, in your words — tell me where I've got it wrong. You named something real, and you gave me a sense not just of how it feels but of the kind of support that would help. What matters now is finding someone who meets you where you actually are. This is a first draft, and you can change anything by telling me.",
     priorities,
     spectrums: [
       { id: "action_space", leftLabel: "Action-oriented", rightLabel: "Space-holding", value: fit.action_space.value, note: fit.action_space.note },
       { id: "structure", leftLabel: "Structured sessions", rightLabel: "Open & exploratory", value: fit.structure.value, note: fit.structure.note },
       { id: "depth", leftLabel: "Practical & present", rightLabel: "Insight & depth", value: fit.depth.value, note: fit.depth.note },
     ],
+  };
+}
+
+// Explicit removal cues for dropping a focus/priority. "less" is intentionally
+// NOT here: "help me feel less anxious" is a goal, not a request to drop the
+// anxiety focus. Softer dialing like "less" only negates fit-axis keywords.
+const REFINE_REMOVAL_RE =
+  /\b(remove|removing|drop|dropping|delete|deleting|take out|took out|get rid|rid of|without|not|no longer|no|don'?t|doesn'?t|didn'?t|won'?t|can'?t|cannot|isn'?t|aren'?t|stop|scratch|nix|forget)\b/;
+
+// Spectrum axes additionally read softer "dial it down" phrasing as negation, so
+// "less structure" moves toward the open end. Never applied to focus tags.
+const REFINE_SOFT_NEGATION_RE = /\bless\b/;
+
+// Contrast/replacement boundaries: a correction like "not anxiety, it's really work
+// burnout" or "not anxiety but burnout" / "drop anxiety and add burnout" pivots at a
+// comma, newline, "it's", "but", or an "and <verb>" hand-off, so we evaluate removal
+// per clause rather than letting an earlier "not"/"drop" bleed onto the replacement
+// named later. A Shift+Enter newline counts too, so "remove anxiety\nadd burnout"
+// splits. Plain "and <noun>" is left intact so conjoined removals ("get rid of
+// anxiety and depression") still drop both.
+const REFINE_CLAUSE_RE =
+  /[,;\n]|\bit'?s\b|\bit is\b|\binstead\b|\brather\b|\bbut\b|\bplus\b|\band\b(?=\s+(?:add|also|include|want|keep|drop|remove|delete|get\s+rid|take\s+out|nix|forget|scratch|lose|ditch))/;
+
+/** The person's most recent turn (their correction), lowercased; newlines kept so
+ *  REFINE_CLAUSE_RE can still split a multi-line correction into clauses. */
+function latestPersonTurn(transcript: string): string {
+  const turns = personTurns(transcript);
+  const last = turns[turns.length - 1] ?? "";
+  return last.trim().toLowerCase();
+}
+
+// True when the clause naming the keyword also carries a removal/negation cue — e.g.
+// "remove anxiety" or "it's not anxiety" — but not "i'm not sure, maybe anxiety helps"
+// (the hedge lives in a different clause) or "work is another burnout thing" (word
+// boundaries keep "not" from matching inside "another"). With softNegation on (fit
+// axes only), a soft "less" also counts, so "less structure" flips the axis while
+// "feeling less anxious" never drops the anxiety focus.
+function keywordRemoved(turn: string, keyword: string, softNegation = false): boolean {
+  for (const clause of turn.split(REFINE_CLAUSE_RE)) {
+    if (!clause.includes(keyword)) continue;
+    if (REFINE_REMOVAL_RE.test(clause)) return true;
+    if (softNegation && REFINE_SOFT_NEGATION_RE.test(clause)) return true;
+  }
+  return false;
+}
+
+/**
+ * Read a fit signal from just the latest correction, honoring negation so
+ * "less structure" or "not so structured" moves toward open exploration instead of
+ * the structured side. Returns only the axes the newest turn clearly speaks to;
+ * everything else is left to the existing summary.
+ */
+function latestSpectrumSignal(
+  latest: string,
+): Partial<Record<SpectrumId, { value: number; note: string }>> {
+  const out: Partial<Record<SpectrumId, { value: number; note: string }>> = {};
+  for (const ax of SPECTRUM_AXES) {
+    const lowHit = ax.low.keys.some((k) => latest.includes(k));
+    const highHit = ax.high.keys.some((k) => latest.includes(k));
+    const lowNeg = ax.low.keys.some((k) => keywordRemoved(latest, k, true));
+    const highNeg = ax.high.keys.some((k) => keywordRemoved(latest, k, true));
+    // A negated keyword flips to the opposite side of the axis.
+    const wantsLow = (lowHit && !lowNeg) || highNeg;
+    const wantsHigh = (highHit && !highNeg) || lowNeg;
+    if (wantsLow && !wantsHigh) out[ax.id] = { value: ax.low.value, note: ax.low.note };
+    else if (wantsHigh && !wantsLow) out[ax.id] = { value: ax.high.value, note: ax.high.note };
+  }
+  return out;
+}
+
+export function fallbackRefine(
+  transcript: string,
+  current: Synthesis,
+): Synthesis & { acknowledgment: string } {
+  const latest = latestPersonTurn(transcript);
+  const ack = "I've updated your summary — take a look.";
+
+  // No prior summary to build on, or we couldn't read a latest turn: fall back to a
+  // full resynthesis (the original behavior) rather than guessing.
+  if (!latest || (!current.priorities.length && !current.spectrums.length)) {
+    const next = fallbackSynthesis(transcript);
+    return {
+      reflection: next.reflection || current.reflection,
+      priorities: next.priorities.length ? next.priorities : current.priorities,
+      spectrums: next.spectrums.length ? next.spectrums : current.spectrums,
+      acknowledgment: ack,
+    };
+  }
+
+  // Bias toward the latest correction: keep the existing summary and apply only the
+  // add/remove intent voiced in the newest turn. This way "drop anxiety, it's really
+  // work burnout" removes anxiety instead of re-matching it from earlier in the
+  // transcript (where the word still appears).
+  const removedFocuses = new Set<string>();
+  const additions: Priority[] = [];
+  for (const theme of THEME_MAP) {
+    const mentioned = theme.key.filter((k) => latest.includes(k));
+    if (!mentioned.length) continue;
+    if (mentioned.some((k) => keywordRemoved(latest, k))) {
+      removedFocuses.add(theme.focus);
+    } else {
+      additions.push({
+        id: "",
+        title: theme.title,
+        sourceQuote: pickQuote("Person: " + latest, theme.key) || "what you just added",
+        description: theme.desc,
+        focusTags: [theme.focus],
+      });
+    }
+  }
+
+  const kept = current.priorities.filter(
+    (p) => !p.focusTags.some((f) => removedFocuses.has(f)),
+  );
+  const focuses = new Set(kept.flatMap((p) => p.focusTags));
+  const merged = [...kept];
+  for (const add of additions) {
+    if (add.focusTags.some((f) => focuses.has(f))) continue;
+    merged.push(add);
+    add.focusTags.forEach((f) => focuses.add(f));
+  }
+
+  let priorities = merged.slice(0, 5).map((p, i) => ({ ...p, id: `p-${i}` }));
+  if (!priorities.length) {
+    priorities = [
+      {
+        id: "p-0",
+        title: "Someone who really listens",
+        sourceQuote: "what you shared just now",
+        description: "More than anything, you want to feel genuinely heard.",
+        focusTags: ["identity & self"],
+      },
+    ];
+  }
+
+  // Spectrums: only move an axis when the newest turn voices a fresh preference,
+  // honoring negation ("less structure" -> open), otherwise keep what the person
+  // already steered.
+  const signal = latestSpectrumSignal(latest);
+  const base = current.spectrums.length
+    ? current.spectrums
+    : fallbackSynthesis(transcript).spectrums;
+  const spectrums: Spectrum[] = base.map((s) => {
+    const sig = signal[s.id];
+    return sig ? { ...s, value: sig.value, note: sig.note } : s;
+  });
+
+  return {
+    reflection: current.reflection,
+    priorities,
+    spectrums,
+    acknowledgment: ack,
   };
 }
 
