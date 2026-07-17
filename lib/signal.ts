@@ -58,11 +58,29 @@ export const FIT_NUDGE_SAFETY_NET_TURNS = 5;
 export const MIRROR_SAFETY_NET_TURNS = 8;
 
 /**
+ * Minimum words accumulated across the substantive turns before a backstop may
+ * fire. A turn count alone isn't enough: clipped replies like "ok", "yeah", or
+ * "idk" are non-empty and aren't spark chips, so they pass substantiveTurns and
+ * could otherwise let five or eight low-content turns trip the nets — recreating
+ * the raw turn-count behavior this design set out to remove. Gating on cumulative
+ * substance keeps the backstop tied to real signal (mirroring how the offline
+ * fallbackReadyForMirror gauges depth), while the model's own judgement stays the
+ * primary trigger. Deliberately low bars: enough to filter pure filler, not to
+ * suppress a genuinely terse but real conversation.
+ */
+export const FIT_NUDGE_SAFETY_NET_WORDS = 25;
+export const MIRROR_SAFETY_NET_WORDS = 60;
+
+/**
  * True once the fit softening has circled long enough to warrant the backstop nudge.
  * NOT the primary trigger — the model's own read of "do they feel heard?" is.
  */
 export function fitNudgeSafetyNet(userTexts: string[]): boolean {
-  return substantiveTurns(userTexts).length >= FIT_NUDGE_SAFETY_NET_TURNS;
+  const substantive = substantiveTurns(userTexts);
+  return (
+    substantive.length >= FIT_NUDGE_SAFETY_NET_TURNS &&
+    countWords(substantive) >= FIT_NUDGE_SAFETY_NET_WORDS
+  );
 }
 
 /**
@@ -70,5 +88,9 @@ export function fitNudgeSafetyNet(userTexts: string[]): boolean {
  * NOT the primary trigger — the model-emitted readiness marker is.
  */
 export function mirrorSafetyNet(userTexts: string[]): boolean {
-  return substantiveTurns(userTexts).length >= MIRROR_SAFETY_NET_TURNS;
+  const substantive = substantiveTurns(userTexts);
+  return (
+    substantive.length >= MIRROR_SAFETY_NET_TURNS &&
+    countWords(substantive) >= MIRROR_SAFETY_NET_WORDS
+  );
 }
