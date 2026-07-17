@@ -41,7 +41,12 @@ export function Conversation({
   const waitingForReply = streaming && last?.role === "assistant" && last.text === "";
 
   const visibleMessages = waitingForReply ? messages.slice(0, -1) : messages;
-  const showChips = userTurnCount === 0 && !composerDisabled;
+  // Pristine opening (no user turns yet, composer active): center the greeting,
+  // chips and composer as one calm focal group rather than stranding the first
+  // message at the top of a tall viewport. Flips to the growing transcript once
+  // the conversation begins.
+  const isWelcome = userTurnCount === 0 && !composerDisabled;
+  const showChips = isWelcome;
 
   useEffect(() => {
     function updateStickiness() {
@@ -81,8 +86,18 @@ export function Conversation({
   }, [messages, streaming, waitingForReply, progressKey]);
 
   return (
-    <div className="flex min-h-[calc(100dvh-8rem)] flex-col">
-      <div className="flex-1 space-y-10 pb-12 sm:space-y-12 sm:pb-16">
+    <div
+      className={`flex min-h-[calc(100dvh-8rem)] flex-col${
+        isWelcome ? " justify-center" : ""
+      }`}
+    >
+      <div
+        className={
+          isWelcome
+            ? "space-y-10 pb-8 sm:space-y-12"
+            : "flex-1 space-y-10 pb-12 sm:space-y-12 sm:pb-16"
+        }
+      >
         {visibleMessages.map((m) => (
           <div key={m.id} className="animate-rise">
             <MessageBubble message={m} />
@@ -97,7 +112,13 @@ export function Conversation({
         <div ref={endRef} className="h-px scroll-mb-[8.5rem] sm:scroll-mb-[9.5rem]" />
       </div>
 
-      <div className="sticky bottom-0 space-y-3 chat-composer-fade pb-5 pt-3">
+      <div
+        className={
+          isWelcome
+            ? "space-y-3 pt-3"
+            : "sticky bottom-0 space-y-3 chat-composer-fade pb-5 pt-3"
+        }
+      >
         {showChips && <SparkChips onPick={onSend} disabled={streaming} />}
         <Composer
           onSend={onSend}
