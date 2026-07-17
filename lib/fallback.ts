@@ -1,4 +1,4 @@
-import type { Priority, SafetyAssessment, SafetyTier, Spectrum, Synthesis } from "./types";
+import type { Priority, SafetyAssessment, SafetyTier, Spectrum, SpectrumId, Synthesis } from "./types";
 import { MIRROR_READY_MARKER } from "./types";
 
 /*
@@ -202,6 +202,63 @@ function personText(transcript: string): string {
 }
 
 /**
+ * Fit axes for the offline reading. Each axis has a low side (0) and high side
+ * (100) with the keywords that voice each, so both the synthesis reading and the
+ * refine correction path share one source of truth.
+ */
+type SpectrumAxis = {
+  id: SpectrumId;
+  low: { keys: string[]; value: number; note: string };
+  high: { keys: string[]; value: number; note: string };
+  neutral: { value: number; note: string };
+};
+
+const SPECTRUM_AXES: SpectrumAxis[] = [
+  {
+    id: "action_space", // 0 = tools & action, 100 = space to be heard.
+    low: {
+      keys: ["things to try", "tools", "techniques", "strategies", "practical", "advice", "guidance", "homework", "exercises", "worksheets", "something to do", "action"],
+      value: 25,
+      note: "You said you'd want someone who also offers things to try, not only listening.",
+    },
+    high: {
+      keys: ["listen", "hold space", "be heard", "feel heard", "just talk", "vent", "space to", "someone who hears"],
+      value: 80,
+      note: "You said you mostly want someone who listens and holds space.",
+    },
+    neutral: { value: 55, note: "A balance of being heard and getting tools when you're ready." },
+  },
+  {
+    id: "structure", // 0 = structured sessions, 100 = open exploration.
+    low: {
+      keys: ["structure", "agenda", "a plan", "clear steps", "goals", "direction", "framework", "organized", "each time", "guided"],
+      value: 25,
+      note: "You leaned toward steady structure and a clear sense of direction.",
+    },
+    high: {
+      keys: ["follow whatever", "wherever it goes", "room to", "unstructured", "see what comes up", "let it flow", "go where it", "open-ended"],
+      value: 78,
+      note: "You leaned toward open room to follow whatever surfaces.",
+    },
+    neutral: { value: 50, note: "A mix of gentle direction and room to follow what comes up." },
+  },
+  {
+    id: "depth", // 0 = practical & present, 100 = insight & depth.
+    low: {
+      keys: ["relief", "cope", "right now", "day to day", "day-to-day", "get through", "manage", "here and now", "here-and-now", "practical"],
+      value: 28,
+      note: "You leaned toward practical relief in the here-and-now.",
+    },
+    high: {
+      keys: ["deeper", "roots", "understand why", "root cause", "the past", "childhood", "patterns", "insight", "make sense of", "underneath"],
+      value: 80,
+      note: "You leaned toward understanding the deeper roots, not just relief.",
+    },
+    neutral: { value: 55, note: "Both some relief now and understanding the deeper why." },
+  },
+];
+
+/**
  * Lightweight offline reading of the fit preferences the person actually voiced,
  * so the Mirror's spectrums reflect what they said rather than fixed defaults.
  * Each axis only moves off-center when there's a clear one-sided signal; otherwise
@@ -209,32 +266,17 @@ function personText(transcript: string): string {
  */
 function deriveSpectrums(
   transcript: string,
-): Record<"action_space" | "structure" | "depth", { value: number; note: string }> {
+): Record<SpectrumId, { value: number; note: string }> {
   const t = personText(transcript);
-  const has = (...words: string[]) => words.some((w) => t.includes(w));
-
-  // action_space: 0 = tools & action, 100 = space to be heard.
-  const wantsTools = has("things to try", "tools", "techniques", "strategies", "practical", "advice", "guidance", "homework", "exercises", "worksheets", "something to do", "action");
-  const wantsSpace = has("listen", "hold space", "be heard", "feel heard", "just talk", "vent", "space to", "someone who hears");
-  let action_space = { value: 55, note: "A balance of being heard and getting tools when you're ready." };
-  if (wantsSpace && !wantsTools) action_space = { value: 80, note: "You said you mostly want someone who listens and holds space." };
-  else if (wantsTools && !wantsSpace) action_space = { value: 25, note: "You said you'd want someone who also offers things to try, not only listening." };
-
-  // structure: 0 = structured sessions, 100 = open exploration.
-  const wantsStructure = has("structure", "agenda", "a plan", "clear steps", "goals", "direction", "framework", "organized", "each time", "guided");
-  const wantsOpen = has("follow whatever", "wherever it goes", "room to", "unstructured", "see what comes up", "let it flow", "go where it", "open-ended");
-  let structure = { value: 50, note: "A mix of gentle direction and room to follow what comes up." };
-  if (wantsStructure && !wantsOpen) structure = { value: 25, note: "You leaned toward steady structure and a clear sense of direction." };
-  else if (wantsOpen && !wantsStructure) structure = { value: 78, note: "You leaned toward open room to follow whatever surfaces." };
-
-  // depth: 0 = practical & present, 100 = insight & depth.
-  const wantsPresent = has("relief", "cope", "right now", "day to day", "day-to-day", "get through", "manage", "here and now", "here-and-now", "practical");
-  const wantsDepth = has("deeper", "roots", "understand why", "root cause", "the past", "childhood", "patterns", "insight", "make sense of", "underneath");
-  let depth = { value: 55, note: "Both some relief now and understanding the deeper why." };
-  if (wantsPresent && !wantsDepth) depth = { value: 28, note: "You leaned toward practical relief in the here-and-now." };
-  else if (wantsDepth && !wantsPresent) depth = { value: 80, note: "You leaned toward understanding the deeper roots, not just relief." };
-
-  return { action_space, structure, depth };
+  const has = (keys: string[]) => keys.some((w) => t.includes(w));
+  const out = {} as Record<SpectrumId, { value: number; note: string }>;
+  for (const ax of SPECTRUM_AXES) {
+    const low = has(ax.low.keys);
+    const high = has(ax.high.keys);
+    const pick = low && !high ? ax.low : high && !low ? ax.high : ax.neutral;
+    out[ax.id] = { value: pick.value, note: pick.note };
+  }
+  return out;
 }
 
 export function fallbackSynthesis(transcript: string): Synthesis {
@@ -276,7 +318,7 @@ export function fallbackSynthesis(transcript: string): Synthesis {
 }
 
 const REFINE_REMOVAL_RE =
-  /\b(remove|removing|drop|dropping|delete|deleting|take out|took out|get rid|rid of|without|not|no longer|isn'?t|aren'?t|stop|less|scratch|nix|forget)\b/;
+  /\b(remove|removing|drop|dropping|delete|deleting|take out|took out|get rid|rid of|without|not|no longer|no|don'?t|doesn'?t|didn'?t|won'?t|can'?t|cannot|isn'?t|aren'?t|stop|less|scratch|nix|forget)\b/;
 
 // Contrast/replacement boundaries: a correction like "not anxiety, it's really work
 // burnout" pivots at a comma or "it's", so we evaluate removal per clause rather than
@@ -302,6 +344,30 @@ function keywordRemoved(turn: string, keyword: string): boolean {
     if (clause.includes(keyword) && REFINE_REMOVAL_RE.test(clause)) return true;
   }
   return false;
+}
+
+/**
+ * Read a fit signal from just the latest correction, honoring negation so
+ * "less structure" or "not so structured" moves toward open exploration instead of
+ * the structured side. Returns only the axes the newest turn clearly speaks to;
+ * everything else is left to the existing summary.
+ */
+function latestSpectrumSignal(
+  latest: string,
+): Partial<Record<SpectrumId, { value: number; note: string }>> {
+  const out: Partial<Record<SpectrumId, { value: number; note: string }>> = {};
+  for (const ax of SPECTRUM_AXES) {
+    const lowHit = ax.low.keys.some((k) => latest.includes(k));
+    const highHit = ax.high.keys.some((k) => latest.includes(k));
+    const lowNeg = ax.low.keys.some((k) => keywordRemoved(latest, k));
+    const highNeg = ax.high.keys.some((k) => keywordRemoved(latest, k));
+    // A negated keyword flips to the opposite side of the axis.
+    const wantsLow = (lowHit && !lowNeg) || highNeg;
+    const wantsHigh = (highHit && !highNeg) || lowNeg;
+    if (wantsLow && !wantsHigh) out[ax.id] = { value: ax.low.value, note: ax.low.note };
+    else if (wantsHigh && !wantsLow) out[ax.id] = { value: ax.high.value, note: ax.high.note };
+  }
+  return out;
 }
 
 export function fallbackRefine(
@@ -369,19 +435,16 @@ export function fallbackRefine(
     ];
   }
 
-  // Spectrums: only move an axis when the newest turn voices a fresh preference;
-  // otherwise keep whatever the person already steered.
-  const neutral = deriveSpectrums("");
-  const latestFit = deriveSpectrums("Person: " + latest);
+  // Spectrums: only move an axis when the newest turn voices a fresh preference,
+  // honoring negation ("less structure" -> open), otherwise keep what the person
+  // already steered.
+  const signal = latestSpectrumSignal(latest);
   const base = current.spectrums.length
     ? current.spectrums
     : fallbackSynthesis(transcript).spectrums;
   const spectrums: Spectrum[] = base.map((s) => {
-    const signal = latestFit[s.id];
-    if (signal && signal.value !== neutral[s.id].value) {
-      return { ...s, value: signal.value, note: signal.note };
-    }
-    return s;
+    const sig = signal[s.id];
+    return sig ? { ...s, value: sig.value, note: sig.note } : s;
   });
 
   return {

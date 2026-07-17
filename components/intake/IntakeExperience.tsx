@@ -26,7 +26,6 @@ import {
 } from "@/lib/intention-store";
 import type {
   Booking,
-  ChatMessage,
   IntakeContext,
   Intention,
   MatchResult,
@@ -75,9 +74,10 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
   }>({ open: false, tier: 0, manual: false });
 
   const transitionedRef = useRef(false);
-  // The handoff line is posted once per intake; reused across synth retries so an
-  // outage doesn't append duplicate "I'm going to gather..." bubbles on every retry.
-  const handoffTranscriptRef = useRef<ChatMessage[] | null>(null);
+  // The handoff line is posted once per intake; on a synth retry we re-read the
+  // latest transcript instead of reusing a cached array, so user turns added during
+  // an outage aren't dropped from the summary.
+  const handoffPostedRef = useRef(false);
 
   useEffect(() => {
     let active = true;
@@ -152,9 +152,13 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
   }
 
   async function goToMirror() {
-    const transcript =
-      handoffTranscriptRef.current ?? chat.addAssistantMessage(HANDOFF_LINE);
-    handoffTranscriptRef.current = transcript;
+    if (!handoffPostedRef.current) {
+      chat.addAssistantMessage(HANDOFF_LINE);
+      handoffPostedRef.current = true;
+    }
+    // Read the freshest transcript (includes the handoff line plus anything the
+    // person added since a previous failed attempt) so retries never omit new turns.
+    const transcript = chat.getMessages();
     setStage("reflecting");
     try {
       const [res] = await Promise.all([

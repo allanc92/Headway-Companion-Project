@@ -145,5 +145,9 @@ export function useCompanionChat() {
 
   const userTurnCount = messages.filter((m) => m.role === "user").length;
 
-  return { messages, status, send, addAssistantMessage, addUserMessage, userTurnCount, ready };
+  // Latest transcript, read straight from the ref so callers (e.g. a synth retry)
+  // always see messages added since their last read, not a stale snapshot.
+  const getMessages = useCallback(() => messagesRef.current, []);
+
+  return { messages, status, send, addAssistantMessage, addUserMessage, getMessages, userTurnCount, ready };
 }
