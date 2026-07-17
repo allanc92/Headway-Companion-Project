@@ -38,6 +38,19 @@ const SPARK_REPLIES: Record<string, string> = {
 
 const SPARK_SIGNALS = Object.keys(SPARK_REPLIES);
 
+/**
+ * Offline stand-in for the model-generated opening greeting (used when Azure
+ * creds are absent or a request fails). Warm and static — the live experience
+ * varies this via COMPANION_GREETING. Blank lines split it into paragraphs.
+ */
+export function fallbackOpening(): string {
+  return [
+    "Hi, I'm Huey, your Headway care companion. I'm really glad you're here.",
+    "I'm here to help you get connected to the therapist who best matches what you need — and to stay with you along the way, answering questions and supporting you through your care journey.",
+    "First, I'd just like to understand you a little. What's on your mind? Whether it's a feeling, a situation, or something that's been brewing for a while, there's no right way to begin — start however you want, and we'll work through it together.",
+  ].join("\n\n");
+}
+
 function isSpark(text: string): boolean {
   const t = text.toLowerCase();
   return SPARK_SIGNALS.some((s) => t.includes(s));

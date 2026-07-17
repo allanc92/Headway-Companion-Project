@@ -17,7 +17,7 @@ box. Built as a design + engineering artifact for a Headway product interview.
 
 ---
 
-## The idea in four laws
+## The Product Principles
 
 1. **Expression over taxonomy** — we meet the patient in their own words. The entry point
    is a quiet, natural-language conversation; the system does the work of translating

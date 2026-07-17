@@ -6,13 +6,7 @@ export interface SparkChip {
   signal: string;
 }
 
-/** The AI speaks first. Static so it appears instantly and breaks the blank-screen freeze. */
-export const OPENING_LINES: string[] = [
-  "I'm Huey, your Headway companion. I'm really glad you're here — that first step is often the hardest one.",
-  "There are no forms or checkboxes here — I'd just like to understand you a little first, in your own words.",
-  "Whatever's on your mind — a feeling, a situation, something from today — you can just start there. There's no right way to do this.",
-];
-
+/** Huey's transition line before building the summary — sets expectations so the UI handoff never feels abrupt. */
 export const HANDOFF_LINE =
   "I’m going to gather what I heard into a simple summary now. Look it over, tell me anything you want changed, and then we’ll use it to find therapists who feel close to what you need.";
 
