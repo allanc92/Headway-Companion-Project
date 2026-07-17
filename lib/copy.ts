@@ -8,7 +8,7 @@ export interface SparkChip {
 
 /** The AI speaks first. Static so it appears instantly and breaks the blank-screen freeze. */
 export const OPENING_LINES: string[] = [
-  "I'm really glad you're here. That first step is often the hardest one.",
+  "I'm Huey, your Headway companion. I'm really glad you're here — that first step is often the hardest one.",
   "Before we talk about therapists, I'd like to understand you a little — in your own words. No forms, no checkboxes.",
   "Whatever's on your mind — a feeling, a situation, something from today — you can just start there. There's no right way to do this.",
 ];
