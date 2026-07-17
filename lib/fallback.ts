@@ -359,8 +359,15 @@ export function fallbackSynthesis(transcript: string): Synthesis {
   };
 }
 
+// Explicit removal cues for dropping a focus/priority. "less" is intentionally
+// NOT here: "help me feel less anxious" is a goal, not a request to drop the
+// anxiety focus. Softer dialing like "less" only negates fit-axis keywords.
 const REFINE_REMOVAL_RE =
-  /\b(remove|removing|drop|dropping|delete|deleting|take out|took out|get rid|rid of|without|not|no longer|no|don'?t|doesn'?t|didn'?t|won'?t|can'?t|cannot|isn'?t|aren'?t|stop|less|scratch|nix|forget)\b/;
+  /\b(remove|removing|drop|dropping|delete|deleting|take out|took out|get rid|rid of|without|not|no longer|no|don'?t|doesn'?t|didn'?t|won'?t|can'?t|cannot|isn'?t|aren'?t|stop|scratch|nix|forget)\b/;
+
+// Spectrum axes additionally read softer "dial it down" phrasing as negation, so
+// "less structure" moves toward the open end. Never applied to focus tags.
+const REFINE_SOFT_NEGATION_RE = /\bless\b/;
 
 // Contrast/replacement boundaries: a correction like "not anxiety, it's really work
 // burnout" or "not anxiety but burnout" / "drop anxiety and add burnout" pivots at a
@@ -383,10 +390,14 @@ function latestPersonTurn(transcript: string): string {
 // True when the clause naming the keyword also carries a removal/negation cue — e.g.
 // "remove anxiety" or "it's not anxiety" — but not "i'm not sure, maybe anxiety helps"
 // (the hedge lives in a different clause) or "work is another burnout thing" (word
-// boundaries keep "not" from matching inside "another").
-function keywordRemoved(turn: string, keyword: string): boolean {
+// boundaries keep "not" from matching inside "another"). With softNegation on (fit
+// axes only), a soft "less" also counts, so "less structure" flips the axis while
+// "feeling less anxious" never drops the anxiety focus.
+function keywordRemoved(turn: string, keyword: string, softNegation = false): boolean {
   for (const clause of turn.split(REFINE_CLAUSE_RE)) {
-    if (clause.includes(keyword) && REFINE_REMOVAL_RE.test(clause)) return true;
+    if (!clause.includes(keyword)) continue;
+    if (REFINE_REMOVAL_RE.test(clause)) return true;
+    if (softNegation && REFINE_SOFT_NEGATION_RE.test(clause)) return true;
   }
   return false;
 }
@@ -404,8 +415,8 @@ function latestSpectrumSignal(
   for (const ax of SPECTRUM_AXES) {
     const lowHit = ax.low.keys.some((k) => latest.includes(k));
     const highHit = ax.high.keys.some((k) => latest.includes(k));
-    const lowNeg = ax.low.keys.some((k) => keywordRemoved(latest, k));
-    const highNeg = ax.high.keys.some((k) => keywordRemoved(latest, k));
+    const lowNeg = ax.low.keys.some((k) => keywordRemoved(latest, k, true));
+    const highNeg = ax.high.keys.some((k) => keywordRemoved(latest, k, true));
     // A negated keyword flips to the opposite side of the axis.
     const wantsLow = (lowHit && !lowNeg) || highNeg;
     const wantsHigh = (highHit && !highNeg) || lowNeg;

@@ -250,7 +250,9 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
   }, [chat.ready, chat.status, stage, safety.open]);
 
   async function findMatches() {
-    if (priorities.length === 0) return;
+    // Guard on refining too: a pending correction can still replace the summary,
+    // so matching now would use stale priorities/spectrums.
+    if (priorities.length === 0 || refining) return;
 
     setStage("matching");
     persist({ priorities, spectrums, chosenProviderId: undefined, booking: undefined });
@@ -375,7 +377,7 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
             reflection={synthesis.reflection}
             priorities={priorities}
             spectrums={spectrums}
-            disabled={priorities.length === 0}
+            disabled={priorities.length === 0 || refining}
             matching={matching}
             onFindMatches={findMatches}
             showAction={!matchResult}
