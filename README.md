@@ -29,8 +29,8 @@ box. Built as a design + engineering artifact for a Headway product interview.
    (Action-oriented ↔ Space-holding) and surface real marketplace trade-offs. When
    criteria are too narrow, the UI shows the bottleneck and what adjusting it unlocks.
 4. **Context is connection** — the intake becomes a persistent **Intention** artifact: it
-   is shared with the therapist before session one and stays an updatable compass for the
-   patient.
+   belongs to the patient, can be shared with a therapist if they choose, and stays an
+   updatable compass for the patient.
 
 A fifth, non-negotiable layer — **duty of care** — runs an always-on "Get help now"
 affordance and a tiered crisis-detection model that raises a warm, resourced safety
@@ -43,8 +43,8 @@ overlay.
 ```
 Homepage (ZIP + insurance)  →  Conversation      →  The Mirror        →  Honest Map        →  Intention
 Headway-faithful anchor         Phase 1:             Phase 2:              Deterministic         Persistent artifact
-captures hard filters           Expression           Co-authored           match + honest        shared with the
-                                (AI speaks first)    understanding         trade-offs            therapist
+captures hard filters           Expression           Co-authored           match + honest        the patient can
+                                (AI speaks first)    understanding         trade-offs            choose to share
 ```
 
 - **Homepage** — a faithful recreation of Headway's landing page. "Find care" captures
@@ -58,7 +58,7 @@ captures hard filters           Expression           Co-authored           match
   spectrums, then see deterministic matches with availability-aware trade-offs and
   bottleneck surfacing.
 - **Intention** — pick a provider; the living Intention is saved locally and framed as
-  what the therapist will see first.
+  something the patient can bring to a first session if they choose.
 
 ---
 
