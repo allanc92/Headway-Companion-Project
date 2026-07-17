@@ -23,7 +23,20 @@ const FIT_PROMPTS = [
   "That's really helpful to know. Is there anything else that would help you feel at ease with the person you talk to?",
 ];
 
-const SPARK_SIGNALS = ["hard to start", "ask me", "how does this", "not sure what"];
+// Each spark chip gets its own reply so tapping different chips doesn't return
+// the same stale line. Keyed by a substring found in that chip's signal text.
+const SPARK_REPLIES: Record<string, string> = {
+  "hard to start":
+    "That's okay — beginning is often the hardest part, and there's no wrong way in. We don't have to name anything big; even a word or two about how you're feeling right now is more than enough.",
+  "ask me":
+    "Of course. Here's a gentle one, and you can answer however feels right: what's been taking up the most space in your mind lately?",
+  "how does this":
+    "It's simpler than it might look — this is just a space to talk. No forms, no checkboxes. You share whatever's on your mind, I listen and reflect it back, and together we get a clearer sense of what might help. You lead, I'll follow.",
+  "not sure what":
+    "That's completely okay — you really don't need to have it figured out. Most people arrive not quite knowing. If we just talk about what's going on for you, the part about what you need tends to surface on its own.",
+};
+
+const SPARK_SIGNALS = Object.keys(SPARK_REPLIES);
 
 function isSpark(text: string): boolean {
   const t = text.toLowerCase();
@@ -71,9 +84,10 @@ export function fallbackCompanionReply(userTexts: string[]): string {
 
   let reply: string;
   if (isSpark(last)) {
-    // Meet a stuck signal with a gentle on-ramp; don't advance fit progress.
-    reply =
-      "That's okay — most people don't quite know where to begin. There's no wrong way in. We could start small: what's today been like for you?";
+    // Meet a stuck signal with its own per-chip on-ramp; don't advance fit progress.
+    const lower = last.toLowerCase();
+    const sparkSignal = SPARK_SIGNALS.find((s) => lower.includes(s));
+    reply = sparkSignal ? SPARK_REPLIES[sparkSignal] : SPARK_REPLIES[SPARK_SIGNALS[0]];
   } else if (progress <= 1) {
     // Movement one — help them feel heard.
     reply =
