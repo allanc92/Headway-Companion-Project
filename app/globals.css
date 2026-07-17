@@ -1,0 +1,102 @@
+/*
+  The Intention Engine — design system
+  Recreated from Headway's homepage + provider-portal screenshots.
+  Patient-facing surfaces lean on the homepage system (green + mint + warm neutrals,
+  editorial serif headlines + clean sans UI). The "gentle AI" cues (feather + shimmer)
+  are borrowed from the provider portal.
+*/
+
+@import "tailwindcss";
+
+@theme {
+  /* Brand greens */
+  --color-brand: #1b8a5a;        /* logo / medium green accents */
+  --color-brand-600: #167a4f;
+  --color-forest: #14603b;       /* deep forest — primary buttons */
+  --color-forest-700: #0f4d2f;
+  --color-mint: #e8f4ee;         /* pale hero band */
+  --color-mint-200: #d6ebe0;
+
+  /* Warm neutrals */
+  --color-cream: #f7f5f0;        /* warm off-white ground */
+  --color-sand: #efece4;         /* soft card / section */
+  --color-line: #e4e1d8;         /* hairline borders */
+  --color-ink: #1c1d1a;          /* warm near-black text */
+  --color-ink-soft: #55574f;     /* secondary text */
+  --color-ink-faint: #8a8b81;    /* tertiary text */
+
+  /* Warm illustration accents */
+  --color-coral: #e2836a;
+  --color-mustard: #e2ad4c;
+  --color-sage: #9fb191;
+
+  /* Gentle AI (provider-portal cues) */
+  --color-sky: #dcebf7;
+  --color-sky-ink: #2f5a86;
+  --color-feather: #6fb2a6;
+
+  /* Safety */
+  --color-alert: #b4472f;
+  --color-alert-soft: #f6e9e4;
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-newsreader), ui-serif, Georgia, serif;
+
+  --animate-rise: rise 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-breathe: breathe 4s ease-in-out infinite;
+  --animate-shimmer: shimmer 2.2s linear infinite;
+  --animate-float: float 6s ease-in-out infinite;
+}
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes breathe {
+  0%, 100% { opacity: 0.55; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.04); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -450px 0; }
+  100% { background-position: 450px 0; }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0) rotate(-4deg); }
+  50% { transform: translateY(-8px) rotate(2deg); }
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  body {
+    background: var(--color-cream);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+  }
+  ::selection {
+    background: var(--color-mint-200);
+    color: var(--color-forest-700);
+  }
+}
+
+/* Skeleton shimmer used by the "generating…" state, echoing the provider portal */
+.shimmer-line {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--color-mint) 60%, transparent) 25%,
+    color-mix(in srgb, var(--color-feather) 22%, transparent) 50%,
+    color-mix(in srgb, var(--color-mint) 60%, transparent) 75%
+  );
+  background-size: 900px 100%;
+  animation: var(--animate-shimmer);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line) transparent;
+}
