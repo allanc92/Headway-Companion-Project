@@ -1,178 +1,311 @@
 # The Intention Engine
 
-A working prototype of a reimagined patient-intake experience for
-[Headway](https://headway.co) — a conversational front door that moves a person from
-raw, unstructured feeling (*"something changed in my relationship, and I need to talk to
-someone"*) to a provider choice that feels **understandable, credible, and entirely
-theirs**.
+**A customer-first exploration of therapy discovery: helping people turn
+"something feels off" into a clearer, user-owned understanding of what support
+could fit.**
 
-It replaces the cold clinical intake form with a supportive, AI-guided conversation, then
-lets the patient **co-author** their own matching criteria instead of trusting a black
-box. Built as a design + engineering artifact for a Headway product interview.
+[Open the live prototype](https://headway-companion-project.vercel.app) |
+[Read the changelog](CHANGELOG.md)
 
-> **Not affiliated with, or endorsed by, Headway.** This is a good-faith interview
-> prototype that recreates Headway's *design system* (layout, color, type, components)
-> using original, copyright-safe assets — no lifted photography, illustrations, or
-> licensed fonts. The wordmark is a simple recreation for demo purposes only.
+> [!IMPORTANT]
+> This is an unofficial, non-clinical product prototype. It is not affiliated
+> with or endorsed by [Headway](https://headway.co), does not use real provider
+> inventory, and does not complete a real appointment booking. Do not enter real
+> health information or other sensitive personal data.
 
----
+## Start with the person, not the taxonomy
 
-## The Product Principles
+The customer this concept is designed for knows they may want therapy, but may
+not yet have the language to describe a diagnosis, modality, or ideal working
+style. A filter-led experience asks them to translate their life into clinical
+categories before the product has earned that precision.
 
-1. **Expression over taxonomy** — we meet the patient in their own words. The entry point
-   is a quiet, natural-language conversation; the system does the work of translating
-   context into matching criteria behind the scenes.
-2. **Co-authored understanding** — no black-box matching. What the AI infers is surfaced
-   as tactile, malleable **priority cards** the patient can rank, edit, or discard, each
-   anchored to a phrase they actually said.
-3. **Transparency is trust** — we replace filter sidebars with human **spectrums**
-   (Action-oriented ↔ Space-holding) and surface real marketplace trade-offs. When
-   criteria are too narrow, the UI shows the bottleneck and what adjusting it unlocks.
-4. **Context is connection** — the intake becomes a persistent **Intention** artifact: it
-   belongs to the patient, can be shared with a therapist if they choose, and stays an
-   updatable compass for the patient.
+The Intention Engine starts one step earlier. Huey, a warm and explicitly
+non-clinical companion, helps a person reflect in their own words. The product
+then turns that conversation into an inspectable summary, asks for consent
+before moving forward, and uses the person's stated needs to explain
+illustrative provider matches.
 
-A fifth, non-negotiable layer — **duty of care** — runs an always-on "Get help now"
-affordance (a focused resource panel in the header) and a tiered crisis-detection
-model that gently weaves crisis resources into the companion's own reply, in
-conversational flow, rather than interrupting with a popup.
+The product wager is simple: **better matching begins with better
+understanding, and that understanding should remain legible and owned by the
+person it describes.**
 
----
+## The customer journey
 
-## The journey
+`Find care -> Get oriented -> Reflect -> Confirm -> Understand -> Choose -> Keep`
 
-```
-Homepage (ZIP + insurance)  →  Conversation      →  Understanding     →  Matches           →  Intention
-Headway-faithful anchor         Phase 1:             Phase 2:              Deterministic         Persistent artifact
-captures hard filters           Expression           a summary you can     match carousel        the patient can
-                                (AI speaks first)    shape by chatting     + honest trade-offs   choose to share
-```
-
-- **Homepage** — a faithful recreation of Headway's landing page. "Find care" captures
-  **ZIP + insurance** (the deterministic hard filters) and transitions natively into the
-  engine.
-- **Conversation (Expression)** — the AI speaks first to break the blank-page freeze, then
-  streams a warm, unhurried dialogue. Spark chips summon help rather than prefill answers.
-- **Understanding** — once Huey has enough context, it asks whether you're ready for a
-  summary or want to keep talking. Only after confirmation does a held pause synthesize
-  the transcript into a short reflection, priorities, and working-style spectrums.
-- **Refine by chatting** — if anything feels off you just say so in the chat and Huey
-  updates the summary (`POST /api/refine`); most people trust it and move on.
-- **Matches** — deterministic matches appear as a horizontal carousel of therapist cards
-  with availability-aware trade-offs and bottleneck surfacing.
-- **Intention** — pick a provider; the living Intention is saved locally and framed as
-  something the patient can bring to a first session if they choose.
-
----
-
-## Tech stack
-
-- **Next.js (App Router) + TypeScript** — [`next@16`](https://nextjs.org)
-- **Tailwind CSS v4** — calm, minimal design system recreated from Headway
-- **Vercel AI SDK** (`ai`) + **`@ai-sdk/azure`** — Azure OpenAI, streaming + structured output
-- **Framer Motion** — held-pause, crystallization, card reordering
-- **Zod** — schemas for structured LLM output (synthesis cards, safety tiers)
-- **localStorage** — Intention persistence (no DB, no auth)
-
-### Where the LLM is used
-
-The LLM handles *language and understanding*; deterministic code handles *marketplace math*.
-
-| Touchpoint | Route | Method |
+| Moment | Customer need | Prototype response |
 | --- | --- | --- |
-| Companion conversation | `POST /api/chat` | streamed `streamText` |
-| Safety classification | `POST /api/safety` | `generateObject` + Zod (`tier 0–3`) |
-| Understanding / synthesis | `POST /api/synthesize` | `generateObject` + Zod (reflection + cards) |
-| Summary refinement | `POST /api/refine` | `generateObject` + Zod (revised summary + acknowledgment) |
-| Match explanations | `POST /api/match` | deterministic scoring + LLM "why this fits" blurbs |
+| Find care | "Can I start with the constraints I already know?" | ZIP and insurance establish the initial marketplace constraints. |
+| Get oriented | "What is about to happen?" | A short interstitial explains the experience and shows an explicitly simulated local provider count. |
+| Reflect | "I know something is wrong, but I do not know how to begin." | Huey opens the conversation, streams responses, and offers starter prompts that summon help rather than prefill an answer. |
+| Confirm | "Do not decide that I am finished for me." | The experience asks whether the person is ready for a summary or wants to keep talking. |
+| Understand | "Show me what you heard, in language I recognize." | A structured reflection, priorities, and working-style spectrums are surfaced and can be corrected through chat. |
+| Choose | "Explain why someone may fit, including the trade-offs." | Deterministic filters and scoring rank fictional providers; the UI explains fit, constraints, availability, and a simulated booking choice. |
+| Keep | "Let me carry this understanding forward." | A user-owned Intention is saved on the device and framed as something the person may bring into care if they choose. |
 
-Provider scoring lives in `lib/providers.ts`: **hard filters** (insurance + ZIP→state /
-telehealth) then a **soft score** over focus-area overlap, spectrum similarity, and an
-availability bonus that gently distributes demand across the network.
+## Capability boundaries
 
----
+Clear boundaries are part of the product, especially in a sensitive domain.
 
-## Getting started
+| Capability | Status | Boundary |
+| --- | --- | --- |
+| Companion conversation | Implemented | Uses Azure OpenAI when configured and a scripted fallback otherwise. Huey is not a therapist or crisis service. |
+| Summary and refinement | Implemented | Produces a reflection, priorities, and working-style spectrums; it does not diagnose or recommend treatment. |
+| Provider matching | Simulated | Runs deterministic filtering and scoring over 14 fictional provider records using an approximate ZIP-to-state mapping. It does not establish clinical suitability or real network eligibility. |
+| Availability and booking | Simulated | Dates and times are generated deterministically from mock provider availability. No external scheduling system is contacted. |
+| Intention persistence | Implemented locally | Saves context, summary, selected provider, and simulated booking to browser `localStorage`. There is no account sync, export, or sharing workflow. |
+| Safety experience | Prototype | Uses US crisis resources, model classification when configured, and heuristic fallback detection. It has not received production clinical validation. |
+| Authentication, billing, and marketplace operations | Not implemented | There is no account system, database, payment flow, real provider inventory, or real booking. |
+
+The Headway-inspired homepage shell contains illustrative marketplace and
+pricing copy. This repository does not establish those figures as current
+Headway facts.
+
+## Product principles
+
+1. **Expression before taxonomy.** Meet the person in their own words before
+   asking them to navigate clinical categories.
+2. **Earn the summary.** Progress is based on conversational substance, followed
+   by an explicit readiness choice, rather than a hidden fixed turn count.
+3. **Use determinism where trust requires it.** AI handles language and
+   interpretation; code handles hard filters, scoring, availability, and
+   bottleneck math.
+4. **Make understanding inspectable.** The summary exposes what the system
+   inferred and lets the person correct it through the same conversation.
+5. **Preserve ownership and product humility.** The Intention belongs to the
+   person, sharing is opt-in language rather than an implied data flow, and
+   safety limitations remain visible.
+
+## Why this palette
+
+The chat palette is not only a visual reference to Headway. It is designed as
+**emotional pacing**: a progression from openness, through reflection, toward
+grounded agency. Meaning comes from how colors are assigned to interaction
+roles, not from the claim that any hue creates a universal emotional response.
+
+| Palette | Interface role | Emotional intent |
+| --- | --- | --- |
+| Sky and air blues (`#DCEBF7`, `#EEF6FB`) | Upper canvas and opening conversation | Spaciousness and permission to begin without pressure |
+| Warm near-whites (`#FBFCF8`, `#FBFEFD`) | Reading and reflection surfaces | Neutrality without the perceived sterility of clinical white |
+| Soft mint (`#DFF2E7`) | User messages, summaries, and supportive states | Containment, ownership, and gentle forward movement |
+| Deep forest green (`#14603B`, `#0F4D2F`) | Primary actions and progress | Grounded confidence; decisive without feeling aggressive |
+| Warm ink (`#1C1D1A`, `#52635D`) | Primary and supporting text | Seriousness and credibility without relying on pure black |
+| Muted rust (`#B4472F`, `#F6E9E4`) | Safety-only states | Urgency and gravity without flooding the experience with alarm |
+
+The canvas moves vertically from cool sky blue through quiet near-white into a
+faint yellow-green near the composer. That arc mirrors the intended journey:
+arrive with uncertainty, gain room to reflect, and leave with greater agency.
+The person's words sit inside a mint container while Huey speaks directly on
+the canvas, making the person's contribution feel held without presenting the
+companion as another human or clinical authority.
+
+Color psychology is contextual and culturally variable. The defensible design
+claim is that this low-saturation system reduces visual intensity and creates a
+clear emotional hierarchy, not that blue or green clinically causes calm. The
+palette should ultimately be validated with the people the experience is
+designed to support.
+
+### Accessibility note
+
+Core text and action combinations measure between **5.82:1 and 16.69:1**; the
+alert pair measures **4.56:1**. These meet WCAG AA contrast targets for normal
+text. Current hairlines and the feather-colored focus border measure between
+**1.38:1 and 2.41:1**, making stronger component and focus boundaries a known
+accessibility improvement. Safety and availability states pair color with text
+and icons rather than relying on color alone.
+
+## Architecture and data flow
+
+```mermaid
+flowchart LR
+    Person[Browser]
+    UI[Next.js App Router UI]
+    API[Next.js route handlers]
+    Gate{Azure credentials available?}
+    Azure[Azure OpenAI]
+    Fallback[Scripted fallbacks]
+    Match[Deterministic match engine]
+    Storage[(Browser localStorage)]
+    Analytics[Vercel Web Analytics]
+
+    Person --> UI
+    UI --> API
+    API --> Gate
+    Gate -->|Yes| Azure
+    Gate -->|No or provider error| Fallback
+    API --> Match
+    UI --> Storage
+    UI --> Analytics
+```
+
+The browser never calls Azure OpenAI directly. Conversation data is posted to
+server-side route handlers, which use Azure only when the required credentials
+are present. Every AI touchpoint has a fallback path so the full product journey
+remains demonstrable without model access.
+
+### Responsibility split
+
+| Touchpoint | Route | Responsibility |
+| --- | --- | --- |
+| Companion conversation | `POST /api/chat` | Streams model text or a paced scripted fallback. |
+| Safety classification | `POST /api/safety` | Produces a tier 0-3 assessment with structured model output or heuristic fallback detection. |
+| Understanding | `POST /api/synthesize` | Produces a Zod-validated reflection, priorities, and spectrums or a deterministic fallback synthesis. |
+| Summary correction | `POST /api/refine` | Revises the structured understanding from conversational feedback. |
+| Provider matching | `POST /api/match` | Runs deterministic hard filters and weighted scoring, then uses the model or fallback code only to explain the result. |
+
+Provider filtering and scoring live in `lib/providers.ts`:
+
+- **Hard constraints:** selected insurance and approximate
+  ZIP-to-state/in-person eligibility
+- **Soft fit:** 55% focus-area overlap, 37% working-style similarity, plus a
+  small availability adjustment
+- **Transparency:** deterministic match reasons and bottleneck copy explain
+  which constraint narrows the result set
+
+## Safety, privacy, and data handling
+
+### Safety
+
+- An always-available **Get help now** action exposes 988, Crisis Text Line, and
+  911 resources for people in the US.
+- Each user turn is classified on a four-tier safety scale. Azure structured
+  output is used when configured; otherwise a keyword-based fallback runs.
+- Summary transitions wait for outstanding safety checks and do not advance on
+  a flagged turn.
+- The classifier, fallback heuristics, copy, and interaction design are
+  prototypes. They have not received clinical review or production validation.
+- This product is not a crisis service. In the US, call or text **988** for
+  crisis support or call **911** for immediate danger.
+
+### Data flow
+
+| Data | Where it goes | App-level persistence |
+| --- | --- | --- |
+| Conversation text | Next.js API routes; forwarded to Azure OpenAI only when live credentials are configured | No application database |
+| ZIP, insurance, summary, preferences, chosen fictional provider, and simulated booking | Browser only after the Intention is saved | Unencrypted `localStorage` until browser storage is cleared or the experience is restarted |
+| Page-level usage telemetry | Vercel Web Analytics is mounted globally | Governed by the configured Vercel project |
+
+The absence of a database does **not** mean no data leaves the browser:
+conversation text reaches the deployed server and may reach Azure OpenAI in live
+mode. Infrastructure logging, retention, residency, consent, and deletion
+requirements would need explicit review before any production use.
+
+## Run locally
+
+### Prerequisites
+
+- Node.js **20.9.0 or newer**
+- npm
 
 ```bash
-npm install
+git clone https://github.com/allanc92/Headway-Companion-Project.git
+cd Headway-Companion-Project
+npm ci
 npm run dev
 ```
 
-Open <http://localhost:3000>.
+Open <http://localhost:3000>. No Azure configuration is required; the app uses
+scripted fallbacks when credentials are absent.
 
-**It runs with no configuration.** Without Azure credentials the app uses a graceful,
-scripted fallback for every AI touchpoint, so the entire journey is demo-able offline. Add
-credentials to unlock the live, LLM-powered experience.
+### Enable Azure OpenAI
 
-### Enable the live LLM (Azure OpenAI)
-
-Copy the example env file and fill in your Azure OpenAI resource details:
+Copy `.env.example` to `.env.local`:
 
 ```bash
+# macOS or Linux
 cp .env.example .env.local
 ```
 
-| Variable | Description |
-| --- | --- |
-| `AZURE_RESOURCE_NAME` | Your resource name (the part before `.openai.azure.com`) |
-| `AZURE_API_KEY` | The resource API key |
-| `AZURE_DEPLOYMENT_NAME` | The deployment you created (e.g. `gpt-4o`, `gpt-4o-mini`) |
-| `AZURE_API_VERSION` | e.g. `2024-10-21` |
-| `AZURE_USE_V1_API` | *(optional)* `true` to use the newer `/openai/v1` API instead of classic deployment URLs |
-| `AZURE_BASE_URL` | *(optional)* full base URL instead of `AZURE_RESOURCE_NAME` |
+```powershell
+# Windows PowerShell
+Copy-Item .env.example .env.local
+```
 
-Restart `npm run dev` after editing `.env.local`. `.env.local` is gitignored — never commit
-real keys.
+Then configure the deployment:
 
----
+| Variable | Required | Description |
+| --- | --- | --- |
+| `AZURE_API_KEY` | Yes | Azure OpenAI resource key |
+| `AZURE_DEPLOYMENT_NAME` | Yes | Name of the model deployment |
+| `AZURE_RESOURCE_NAME` | One of resource or base URL | Resource name before `.openai.azure.com` |
+| `AZURE_BASE_URL` | One of resource or base URL | Full endpoint when a custom base URL is needed |
+| `AZURE_API_VERSION` | No | Classic deployment API version; `.env.example` contains an example, not a compatibility guarantee |
+| `AZURE_USE_V1_API` | No | Set to `true` to use `/openai/v1` instead of deployment-based URLs |
+
+Restart `npm run dev` after changing `.env.local`. The file is gitignored; never
+commit real credentials.
+
+## Validation status
+
+```bash
+npm run lint
+npm run build
+```
+
+The repository currently has no automated test suite or CI workflow. Linting and
+a production build are the available project checks; clinical, accessibility,
+privacy, and user validation remain separate requirements.
 
 ## Deploy on Vercel
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fallanc92%2FHeadway-Companion-Project%2Ftree%2Fallanc92-intention-engine&env=AZURE_RESOURCE_NAME,AZURE_API_KEY,AZURE_DEPLOYMENT_NAME,AZURE_API_VERSION&envDescription=Azure%20OpenAI%20credentials%20(optional%20%E2%80%94%20the%20app%20runs%20in%20fallback%20mode%20without%20them))
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fallanc92%2FHeadway-Companion-Project&env=AZURE_RESOURCE_NAME,AZURE_API_KEY,AZURE_DEPLOYMENT_NAME,AZURE_API_VERSION&envDescription=Azure%20OpenAI%20credentials%20are%20optional%3B%20the%20app%20uses%20fallback%20mode%20without%20them)
 
-The button above imports this branch and prompts for the Azure variables (leave them blank
-to deploy in fallback mode). Or do it manually:
+The repository's `vercel.json` pins the framework to Next.js so both page and
+API routes use the expected runtime.
 
-1. Push this repo to GitHub and import it at [vercel.com/new](https://vercel.com/new).
-2. Add the `AZURE_*` variables above under **Project → Settings → Environment Variables**
-   (they are stored encrypted and never live in the repo). Skip this to deploy in fallback
-   mode.
-3. Deploy. Vercel auto-detects Next.js — no extra configuration needed.
+1. Import the repository into Vercel.
+2. Add the `AZURE_*` variables under **Project Settings > Environment
+   Variables**, or omit them to use fallback mode.
+3. Review Analytics, logging, privacy, and retention settings for the target
+   environment.
+4. Deploy.
 
-```bash
-npm run build   # verify a production build locally first
-```
+The current public deployment is
+<https://headway-companion-project.vercel.app>. Its Azure configuration is not
+asserted by this README.
 
----
+## Project map
 
-## Project structure
-
-```
+```text
 app/
-  page.tsx              Headway homepage anchor (ZIP + insurance)
-  intake/page.tsx       The Intention Engine experience
-  api/{chat,safety,synthesize,refine,match}/route.ts
+  page.tsx                         Headway-inspired entry and Find Care form
+  getting-started/page.tsx         Orientation interstitial
+  intake/page.tsx                  Conversation and inline post-chat journey
+  api/
+    chat/route.ts                  Streaming companion
+    safety/route.ts                Tiered safety classification
+    synthesize/route.ts            Structured understanding
+    refine/route.ts                Conversational summary correction
+    match/route.ts                 Matching plus fit explanations
 components/
-  home/                 Wordmark, header, find-care form, hero art
-  intake/               Conversation, understanding summary, therapist carousel, results, artifact
-  ui/                   Icons
+  home/                            Entry experience and hero
+  interstitial/                    Getting Started experience
+  intake/                          Chat, summary, matches, booking, Intention
 lib/
-  azure.ts              Azure OpenAI provider + credential gating
-  prompts.ts            System prompts (the four laws, encoded)
-  providers.ts          14 mock providers + deterministic matching + bottleneck engine
-  fallback.ts           Offline scripted responses (runs without API keys)
-  intention-store.ts    localStorage persistence
-  copy.ts, types.ts
+  azure.ts                         Credential gate and model provider
+  prompts.ts                       Companion, synthesis, and safety prompts
+  providers.ts                     Fictional providers and match engine
+  booking.ts                       Deterministic mock availability
+  fallback.ts                      No-credential and provider-error behavior
+  intention-store.ts              Browser-local persistence
+  signal.ts                        Conversation progression safety nets
+  copy.ts                          Client-facing copy and US crisis resources
+CHANGELOG.md                       Product and engineering history
 ```
 
----
+## Project status
 
-## Scope & disclaimers
+This repository is a focused product and engineering prototype, not a production
+healthcare service. No license or formal contribution process has been
+established; source visibility should not be interpreted as permission to reuse
+the code or assets.
 
-**In scope (prototype):** the end-to-end intake experience, live or fallback AI, deterministic
-matching over mock data, tiered safety UX, and a persistent Intention.
+See [CHANGELOG.md](CHANGELOG.md) for the product and engineering history.
 
-**Out of scope:** real auth, real provider data or booking, a database, and — importantly —
-production clinical sign-off of the safety model. The crisis-detection layer shown here is a
-**design prototype** and is labeled in-app as requiring clinical review before real-world use.
+## Trademark and representation
+
+Headway and related marks belong to their respective owners. This independent
+prototype uses a brand-inspired interface to explore a product concept and is
+not an authoritative representation of Headway's current product, marketplace,
+pricing, provider network, or clinical practices.
