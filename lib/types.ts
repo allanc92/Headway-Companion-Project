@@ -1,5 +1,14 @@
 // Shared domain types for the Intention Engine.
 
+/**
+ * Sentinel the companion model appends — on its own final line — the moment it
+ * judges the conversation has reached sufficient depth to synthesize. The chat
+ * route streams it through untouched; the client strips it from the visible
+ * reply and uses it as the model-driven signal to move into The Mirror. Kept
+ * deliberately unusual so it can never collide with natural language.
+ */
+export const MIRROR_READY_MARKER = "<<READY_FOR_MIRROR>>";
+
 export type SafetyTier = 0 | 1 | 2 | 3;
 
 export interface ChatMessage {

@@ -50,6 +50,7 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
 
   const [resumable, setResumable] = useState<Intention | null>(null);
   const createdAtRef = useRef<string>(new Date().toISOString());
+  const transitionedRef = useRef(false);
 
   useEffect(() => {
     const saved = loadIntention();
@@ -95,6 +96,19 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
   }
 
   // --- The Mirror ---------------------------------------------------------
+  function persist(patch: Partial<Intention>) {
+    const base: Intention = {
+      createdAt: createdAtRef.current,
+      updatedAt: new Date().toISOString(),
+      context,
+      reflection: synthesis?.reflection ?? "",
+      priorities,
+      spectrums,
+      chosenProviderId: chosenProviderId ?? undefined,
+    };
+    saveIntention({ ...base, ...patch, updatedAt: new Date().toISOString() });
+  }
+
   async function goToMirror() {
     setPhase("mirror");
     try {
@@ -118,6 +132,27 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
       setPhase("understanding");
     }
   }
+
+  // Model-driven transition: when the companion signals sufficient depth
+  // (chat.ready) on a completed turn, move into The Mirror on its own — no
+  // manual affordance. Guardrails: only from the conversation phase, only once,
+  // and never while an elevated safety overlay is asking the person to pause.
+  useEffect(() => {
+    if (transitionedRef.current) return;
+    if (phase !== "conversation") return;
+    if (!chat.ready || chat.status !== "idle") return;
+    // Never transition out from under a safety overlay — the person is being
+    // asked to pause or is reaching for help. Re-runs once it's dismissed.
+    if (safety.open) return;
+
+    // A short held beat so the person can take in the companion's last words.
+    const t = setTimeout(() => {
+      transitionedRef.current = true;
+      goToMirror();
+    }, 1100);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chat.ready, chat.status, phase, safety.open]);
 
   // --- Matching -----------------------------------------------------------
   async function findMatches() {
@@ -144,19 +179,6 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
     persist({ chosenProviderId: id });
     setPhase("intention");
     window.scrollTo({ top: 0, behavior: "smooth" });
-  }
-
-  function persist(patch: Partial<Intention>) {
-    const base: Intention = {
-      createdAt: createdAtRef.current,
-      updatedAt: new Date().toISOString(),
-      context,
-      reflection: synthesis?.reflection ?? "",
-      priorities,
-      spectrums,
-      chosenProviderId: chosenProviderId ?? undefined,
-    };
-    saveIntention({ ...base, ...patch, updatedAt: new Date().toISOString() });
   }
 
   function restart() {
@@ -230,7 +252,6 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
               status={chat.status}
               userTurnCount={chat.userTurnCount}
               onSend={handleSend}
-              onReady={goToMirror}
             />
           </>
         )}

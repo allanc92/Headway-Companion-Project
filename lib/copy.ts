@@ -21,9 +21,6 @@ export const SPARK_CHIPS: SparkChip[] = [
   { label: "I'm not sure what I need", signal: "I'm not sure what I need yet." },
 ];
 
-/** Gentle affordance to move from Phase 1 into the Mirror when the person feels ready. */
-export const READY_LABEL = "I think that's it for now";
-
 export interface CrisisResource {
   name: string;
   detail: string;

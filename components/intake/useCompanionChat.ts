@@ -2,12 +2,33 @@
 
 import { useCallback, useRef, useState } from "react";
 import { OPENING_LINES } from "@/lib/copy";
+import { MIRROR_READY_MARKER } from "@/lib/types";
 import type { ChatMessage } from "@/lib/types";
 
 let counter = 0;
 const genId = () => `m${++counter}-${Date.now()}`;
 
 export type ChatStatus = "idle" | "streaming";
+
+/**
+ * Strip the readiness marker (and any partial trailing fragment of it that is
+ * still mid-stream) from text meant for display, so the sentinel never flashes
+ * on screen. Returns the clean text and whether the full marker was present.
+ */
+function extractReadiness(raw: string): { text: string; ready: boolean } {
+  if (raw.includes(MIRROR_READY_MARKER)) {
+    const text = raw.split(MIRROR_READY_MARKER).join("").trimEnd();
+    return { text, ready: true };
+  }
+  // Hide a partial marker that may still be arriving token-by-token.
+  for (let i = MIRROR_READY_MARKER.length - 1; i > 0; i--) {
+    const partial = MIRROR_READY_MARKER.slice(0, i);
+    if (raw.endsWith(partial)) {
+      return { text: raw.slice(0, raw.length - partial.length).trimEnd(), ready: false };
+    }
+  }
+  return { text: raw, ready: false };
+}
 
 export function useCompanionChat() {
   const openingMessage: ChatMessage = {
@@ -17,6 +38,7 @@ export function useCompanionChat() {
   };
   const [messages, setMessages] = useState<ChatMessage[]>([openingMessage]);
   const [status, setStatus] = useState<ChatStatus>("idle");
+  const [ready, setReady] = useState(false);
   const messagesRef = useRef<ChatMessage[]>([openingMessage]);
   const busyRef = useRef(false);
 
@@ -43,6 +65,7 @@ export function useCompanionChat() {
 
       setStatus("streaming");
       busyRef.current = true;
+      setReady(false);
 
       try {
         const res = await fetch("/api/chat", {
@@ -57,15 +80,19 @@ export function useCompanionChat() {
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let acc = "";
+        let sawReady = false;
         for (;;) {
           const { value, done } = await reader.read();
           if (done) break;
           acc += decoder.decode(value, { stream: true });
+          const { text, ready: isReady } = extractReadiness(acc);
+          if (isReady) sawReady = true;
           commit((prev) =>
-            prev.map((m) => (m.id === assistantId ? { ...m, text: acc } : m)),
+            prev.map((m) => (m.id === assistantId ? { ...m, text } : m)),
           );
         }
-        if (!acc.trim()) {
+        const { text: finalText, ready: finalReady } = extractReadiness(acc);
+        if (!finalText.trim()) {
           commit((prev) =>
             prev.map((m) =>
               m.id === assistantId
@@ -74,6 +101,7 @@ export function useCompanionChat() {
             ),
           );
         }
+        if (finalReady || sawReady) setReady(true);
       } catch {
         commit((prev) =>
           prev.map((m) =>
@@ -95,5 +123,5 @@ export function useCompanionChat() {
 
   const userTurnCount = messages.filter((m) => m.role === "user").length;
 
-  return { messages, status, send, userTurnCount };
+  return { messages, status, send, userTurnCount, ready };
 }
