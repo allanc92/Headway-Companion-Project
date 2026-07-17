@@ -321,9 +321,13 @@ const REFINE_REMOVAL_RE =
   /\b(remove|removing|drop|dropping|delete|deleting|take out|took out|get rid|rid of|without|not|no longer|no|don'?t|doesn'?t|didn'?t|won'?t|can'?t|cannot|isn'?t|aren'?t|stop|less|scratch|nix|forget)\b/;
 
 // Contrast/replacement boundaries: a correction like "not anxiety, it's really work
-// burnout" pivots at a comma or "it's", so we evaluate removal per clause rather than
-// letting a "not" earlier in the turn bleed onto a theme named later.
-const REFINE_CLAUSE_RE = /[,;]|\bit'?s\b|\bit is\b|\binstead\b|\brather\b/;
+// burnout" or "not anxiety but burnout" / "drop anxiety and add burnout" pivots at a
+// comma, "it's", "but", or an "and <verb>" hand-off, so we evaluate removal per clause
+// rather than letting an earlier "not"/"drop" bleed onto the replacement named later.
+// Plain "and <noun>" is left intact so conjoined removals ("get rid of anxiety and
+// depression") still drop both.
+const REFINE_CLAUSE_RE =
+  /[,;]|\bit'?s\b|\bit is\b|\binstead\b|\brather\b|\bbut\b|\bplus\b|\band\b(?=\s+(?:add|also|include|want|keep|drop|remove|delete|get\s+rid|take\s+out|nix|forget|scratch|lose|ditch))/;
 
 /** The person's most recent turn (their correction), lowercased. */
 function latestPersonTurn(transcript: string): string {
