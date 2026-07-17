@@ -6,15 +6,10 @@ export function Wordmark({ className = "" }: { className?: string }) {
   return (
     <span className={`inline-flex items-center gap-2 ${className}`}>
       <svg width="26" height="26" viewBox="0 0 32 32" aria-hidden="true">
-        <circle cx="16" cy="16" r="16" fill="var(--color-forest)" />
         <path
-          d="M9 21c0-6 3.5-10 8-10 2.2 0 3.6 1.1 3.6 2.8 0 3.6-6.6 3.2-6.6 7.2"
-          fill="none"
-          stroke="#e8f4ee"
-          strokeWidth="2.2"
-          strokeLinecap="round"
+          d="M4.2 17.2C2.9 9.8 8.2 3.1 15.8 2.7c7.5-.4 12.9 4.5 12.7 11.8-.2 8.1-6.9 14.1-14.8 13.3-4.8-.5-8.7-5.7-9.5-10.6Z"
+          fill="var(--color-forest)"
         />
-        <circle cx="21.5" cy="11.5" r="1.7" fill="#9fe3c0" />
       </svg>
       <span className="text-[1.35rem] font-semibold tracking-tight text-forest">
         Headway

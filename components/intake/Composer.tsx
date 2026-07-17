@@ -37,7 +37,7 @@ export function Composer({
   }
 
   return (
-    <div className="flex items-end gap-2 rounded-3xl border border-line bg-white/90 p-2.5 shadow-sm focus-within:border-feather">
+    <div className="flex items-end gap-2 rounded-3xl border border-hairline bg-surface/95 p-2.5 shadow-[0_12px_32px_rgba(47,90,134,0.08)] focus-within:border-feather">
       <textarea
         ref={ref}
         rows={1}
@@ -46,7 +46,7 @@ export function Composer({
         onKeyDown={handleKeyDown}
         placeholder={placeholder}
         aria-label="Your message"
-        className="max-h-[200px] flex-1 resize-none bg-transparent px-3 py-2 text-[1.05rem] leading-relaxed text-ink outline-none placeholder:text-ink-faint"
+        className="max-h-[200px] flex-1 resize-none bg-transparent px-3 py-2 text-[1.05rem] leading-relaxed text-ink outline-none placeholder:text-ink-muted"
       />
       <button
         type="button"

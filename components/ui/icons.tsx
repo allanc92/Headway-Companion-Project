@@ -30,6 +30,26 @@ export function CardIcon(props: IconProps) {
   );
 }
 
+export function ChevronDownIcon(props: IconProps) {
+  return (
+    <svg {...base} width={20} height={20} {...props}>
+      <path d="M6 9l6 6 6-6" />
+    </svg>
+  );
+}
+
+export function CalculatorIcon(props: IconProps) {
+  return (
+    <svg {...base} width={20} height={20} {...props}>
+      <rect x="5" y="3.5" width="14" height="17" rx="2.5" />
+      <path d="M8 7.5h8" />
+      <path d="M8 11h.01M12 11h.01M16 11h.01" />
+      <path d="M8 15h.01M12 15h.01M16 15h.01" />
+      <path d="M8 18h.01M12 18h.01M16 18h.01" />
+    </svg>
+  );
+}
+
 export function FeatherIcon(props: IconProps) {
   return (
     <svg {...base} width={20} height={20} {...props}>

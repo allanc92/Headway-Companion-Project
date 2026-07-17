@@ -16,12 +16,12 @@ export function SpectrumControls({
   return (
     <div className="space-y-5">
       {spectrums.map((s) => (
-        <div key={s.id} className="rounded-3xl border border-line bg-white/85 p-4 sm:p-5">
+        <div key={s.id} className="rounded-3xl border border-hairline bg-surface/90 p-4 sm:p-5">
           <div className="flex items-center justify-between text-sm font-medium">
-            <span className={s.value < 45 ? "text-forest" : "text-ink-faint"}>
+            <span className={s.value < 45 ? "text-forest" : "text-ink-muted"}>
               {s.leftLabel}
             </span>
-            <span className={s.value > 55 ? "text-forest" : "text-ink-faint"}>
+            <span className={s.value > 55 ? "text-forest" : "text-ink-muted"}>
               {s.rightLabel}
             </span>
           </div>
@@ -37,7 +37,7 @@ export function SpectrumControls({
           />
 
           {s.note && (
-            <p className="mt-2 text-[0.85rem] leading-relaxed text-ink-soft">
+            <p className="mt-2 text-[0.85rem] leading-relaxed text-ink-muted">
               <span className="font-medium text-ink">Why here:</span> {s.note}
             </p>
           )}

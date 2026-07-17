@@ -17,7 +17,7 @@ export function SparkChips({
           type="button"
           disabled={disabled}
           onClick={() => onPick(chip.signal)}
-          className="rounded-full border border-line bg-white/70 px-3.5 py-1.5 text-sm text-ink-soft transition-colors hover:border-feather hover:text-ink disabled:opacity-50"
+          className="rounded-full border border-hairline bg-surface/80 px-3.5 py-1.5 text-sm text-ink-muted transition-colors hover:border-feather hover:text-ink disabled:opacity-50"
         >
           {chip.label}
         </button>
