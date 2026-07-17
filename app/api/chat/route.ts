@@ -1,7 +1,12 @@
 import { streamText, type ModelMessage } from "ai";
 import { getModel, hasAzureCreds } from "@/lib/azure";
-import { COMPANION_SYSTEM, COMPANION_FIT_NUDGE } from "@/lib/prompts";
-import { fallbackCompanionReply } from "@/lib/fallback";
+import {
+  COMPANION_SYSTEM,
+  COMPANION_GREETING,
+  COMPANION_FIT_NUDGE,
+  GREETING_TRIGGER,
+} from "@/lib/prompts";
+import { fallbackCompanionReply, fallbackOpening } from "@/lib/fallback";
 import { fitNudgeSafetyNet } from "@/lib/signal";
 
 export const maxDuration = 30;
@@ -38,27 +43,36 @@ export async function POST(req: Request): Promise<Response> {
     messages = [];
   }
 
+  // The very first exchange has no prior messages: Huey opens the conversation.
+  // The greeting is generated live (via COMPANION_GREETING) so it feels human and
+  // varies each visit, instead of a canned line.
+  const isOpening = messages.length === 0;
+
   if (!hasAzureCreds()) {
+    if (isOpening) return streamStringResponse(fallbackOpening());
     const userTexts = messages.filter((m) => m.role === "user").map((m) => m.text);
     return streamStringResponse(fallbackCompanionReply(userTexts));
   }
 
   try {
-    const modelMessages: ModelMessage[] = messages.map((m) => ({
-      role: m.role,
-      content: m.text,
-    }));
+    const modelMessages: ModelMessage[] = isOpening
+      ? [{ role: "user", content: GREETING_TRIGGER }]
+      : messages.map((m) => ({
+          role: m.role,
+          content: m.text,
+        }));
 
-    // The transition toward fit is the model's own judgement call (see PHASE
-    // DISCIPLINE in COMPANION_SYSTEM): it softens the conversation toward what kind
-    // of support would help once it reads that the person feels heard. This hidden
-    // nudge is only a SAFETY NET — if the model is still circling in "feeling heard"
-    // after several substantive turns, we slip it in to gently break the loop. It is
-    // invisible to the person and never rendered as a step.
+    // Opening turn: hand the model the greeting instruction. Otherwise the shift
+    // toward fit is the model's own judgement call (see PHASE DISCIPLINE in
+    // COMPANION_SYSTEM); this hidden nudge is only a SAFETY NET, slipped in if the
+    // model is still circling in "feeling heard" after several substantive turns.
+    // Both are invisible to the person and never rendered as a step.
     const userTexts = messages.filter((m) => m.role === "user").map((m) => m.text);
-    const system = fitNudgeSafetyNet(userTexts)
-      ? `${COMPANION_SYSTEM}\n\n${COMPANION_FIT_NUDGE}`
-      : COMPANION_SYSTEM;
+    const system = isOpening
+      ? `${COMPANION_SYSTEM}\n\n${COMPANION_GREETING}`
+      : fitNudgeSafetyNet(userTexts)
+        ? `${COMPANION_SYSTEM}\n\n${COMPANION_FIT_NUDGE}`
+        : COMPANION_SYSTEM;
 
     const result = streamText({
       model: getModel(),
@@ -70,6 +84,7 @@ export async function POST(req: Request): Promise<Response> {
     return result.toTextStreamResponse();
   } catch (err) {
     console.error("[/api/chat] falling back:", err);
+    if (isOpening) return streamStringResponse(fallbackOpening());
     const userTexts = messages.filter((m) => m.role === "user").map((m) => m.text);
     return streamStringResponse(fallbackCompanionReply(userTexts));
   }

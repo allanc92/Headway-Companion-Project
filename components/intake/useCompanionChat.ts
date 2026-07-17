@@ -1,13 +1,15 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
-import { OPENING_LINES } from "@/lib/copy";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { MIRROR_READY_MARKER } from "@/lib/types";
 import { mirrorSafetyNet } from "@/lib/signal";
 import type { ChatMessage } from "@/lib/types";
 
 let counter = 0;
 const genId = () => `m${++counter}-${Date.now()}`;
+
+/** Fixed id for the assistant's opening greeting bubble. */
+const OPENING_ID = "opening";
 
 export type ChatStatus = "idle" | "streaming";
 
@@ -31,17 +33,29 @@ function extractReadiness(raw: string): { text: string; ready: boolean } {
   return { text: raw, ready: false };
 }
 
+interface StreamOptions {
+  /** Whether to watch for the Mirror-readiness marker (never on the greeting). */
+  trackReadiness: boolean;
+  /** Shown if the stream finishes empty. */
+  emptyFallback: string;
+  /** Shown if the request fails outright. */
+  errorFallback: string;
+}
+
 export function useCompanionChat() {
+  // Huey opens the conversation, but the greeting is generated live on mount
+  // (see greet()) rather than canned — so it starts empty and streams in.
   const openingMessage: ChatMessage = {
-    id: "opening",
+    id: OPENING_ID,
     role: "assistant",
-    text: OPENING_LINES.join("\n\n"),
+    text: "",
   };
   const [messages, setMessages] = useState<ChatMessage[]>([openingMessage]);
-  const [status, setStatus] = useState<ChatStatus>("idle");
+  const [status, setStatus] = useState<ChatStatus>("streaming");
   const [ready, setReady] = useState(false);
   const messagesRef = useRef<ChatMessage[]>([openingMessage]);
   const busyRef = useRef(false);
+  const didGreetRef = useRef(false);
 
   const commit = useCallback(
     (updater: (prev: ChatMessage[]) => ChatMessage[]) => {
@@ -54,27 +68,20 @@ export function useCompanionChat() {
     [],
   );
 
-  const send = useCallback(
-    async (text: string) => {
-      const trimmed = text.trim();
-      if (!trimmed || busyRef.current) return;
-
-      const userMsg: ChatMessage = { id: genId(), role: "user", text: trimmed };
-      const convo = [...messagesRef.current, userMsg];
-      const assistantId = genId();
-      commit(() => [...convo, { id: assistantId, role: "assistant", text: "" }]);
-
+  // Shared stream consumer for both the opening greeting and ordinary replies:
+  // reads the token stream into the target assistant bubble, hides the readiness
+  // marker, and degrades gracefully on empty/failed responses.
+  const runStream = useCallback(
+    async (assistantId: string, body: unknown, opts: StreamOptions) => {
       setStatus("streaming");
       busyRef.current = true;
-      setReady(false);
+      if (opts.trackReadiness) setReady(false);
 
       try {
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            messages: convo.map((m) => ({ role: m.role, text: m.text })),
-          }),
+          body: JSON.stringify(body),
         });
         if (!res.body) throw new Error("No response body");
 
@@ -96,29 +103,24 @@ export function useCompanionChat() {
         if (!finalText.trim()) {
           commit((prev) =>
             prev.map((m) =>
-              m.id === assistantId
-                ? { ...m, text: "I'm here with you. Take your time." }
-                : m,
+              m.id === assistantId ? { ...m, text: opts.emptyFallback } : m,
             ),
           );
         }
         // Primary signal: the model appends the readiness marker when it judges the
         // conversation is deep enough for the Mirror. Safety net: if it never does but
         // the conversation has run enough substantive turns, force the transition so it
-        // can't circle forever.
-        const userTexts = convo
-          .filter((m) => m.role === "user")
-          .map((m) => m.text);
-        if (finalReady || sawReady || mirrorSafetyNet(userTexts)) setReady(true);
+        // can't circle forever. Only while tracking readiness (never on the greeting).
+        if (opts.trackReadiness) {
+          const userTexts = messagesRef.current
+            .filter((m) => m.role === "user")
+            .map((m) => m.text);
+          if (finalReady || sawReady || mirrorSafetyNet(userTexts)) setReady(true);
+        }
       } catch {
         commit((prev) =>
           prev.map((m) =>
-            m.id === assistantId
-              ? {
-                  ...m,
-                  text: "I'm still here with you. I had trouble responding just then — whenever you're ready, try again.",
-                }
-              : m,
+            m.id === assistantId ? { ...m, text: opts.errorFallback } : m,
           ),
         );
       } finally {
@@ -127,6 +129,51 @@ export function useCompanionChat() {
       }
     },
     [commit],
+  );
+
+  // Ask Huey to open the conversation. Fired once on mount.
+  const greet = useCallback(async () => {
+    await runStream(
+      OPENING_ID,
+      { messages: [] },
+      {
+        trackReadiness: false,
+        emptyFallback:
+          "Hi, I'm Huey, your Headway care companion. Whenever you're ready, tell me what's on your mind — there's no right way to begin.",
+        errorFallback:
+          "Hi, I'm Huey, your Headway care companion. I had a little trouble loading just now, but I'm here. Whenever you're ready, tell me what's on your mind.",
+      },
+    );
+  }, [runStream]);
+
+  useEffect(() => {
+    if (didGreetRef.current) return;
+    didGreetRef.current = true;
+    void greet();
+  }, [greet]);
+
+  const send = useCallback(
+    async (text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed || busyRef.current) return;
+
+      const userMsg: ChatMessage = { id: genId(), role: "user", text: trimmed };
+      const convo = [...messagesRef.current, userMsg];
+      const assistantId = genId();
+      commit(() => [...convo, { id: assistantId, role: "assistant", text: "" }]);
+
+      await runStream(
+        assistantId,
+        { messages: convo.map((m) => ({ role: m.role, text: m.text })) },
+        {
+          trackReadiness: true,
+          emptyFallback: "I'm here with you. Take your time.",
+          errorFallback:
+            "I'm still here with you. I had trouble responding just then — whenever you're ready, try again.",
+        },
+      );
+    },
+    [commit, runStream],
   );
 
   const userTurnCount = messages.filter((m) => m.role === "user").length;
