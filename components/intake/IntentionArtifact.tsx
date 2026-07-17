@@ -38,8 +38,8 @@ export function IntentionArtifact({
           Your Intention is ready.
         </h1>
         <p className="mx-auto mt-2 max-w-md text-[1.02rem] leading-relaxed text-ink-muted">
-          It&apos;s yours to keep and to change. We&apos;ll share it with your therapist
-          before session one, so you never have to start from scratch.
+          It&apos;s yours to keep and to change. If you&apos;d like, you can bring it to your
+          first session, so you never have to start from scratch.
         </p>
       </header>
 
@@ -117,7 +117,7 @@ export function IntentionArtifact({
         <div className="flex items-center gap-2 text-forest">
           <FeatherIcon width={18} height={18} />
           <p className="text-sm font-medium">
-            What {provider ? provider.name.split(/\s+/)[0] : "your therapist"} will see first
+            What you can bring into session
           </p>
         </div>
 
