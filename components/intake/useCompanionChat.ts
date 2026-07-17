@@ -24,7 +24,7 @@ function extractReadiness(raw: string): { text: string; ready: boolean } {
   for (let i = MIRROR_READY_MARKER.length - 1; i > 0; i--) {
     const partial = MIRROR_READY_MARKER.slice(0, i);
     if (raw.endsWith(partial)) {
-      return { text: raw.slice(0, raw.length - partial.length).trimEnd(), ready: false };
+      return { text: raw.slice(0, -partial.length).trimEnd(), ready: false };
     }
   }
   return { text: raw, ready: false };

@@ -30,6 +30,10 @@ type Phase = "conversation" | "mirror" | "understanding" | "results" | "intentio
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** A short held beat before auto-advancing, so the person can take in the
+ *  companion's last words rather than being yanked into The Mirror. */
+const READINESS_TRANSITION_MS = 1100;
+
 export function IntakeExperience({ context }: { context: IntakeContext }) {
   const router = useRouter();
   const chat = useCompanionChat();
@@ -149,7 +153,7 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
     const t = setTimeout(() => {
       transitionedRef.current = true;
       goToMirror();
-    }, 1100);
+    }, READINESS_TRANSITION_MS);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chat.ready, chat.status, phase, safety.open]);
