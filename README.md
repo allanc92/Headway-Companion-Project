@@ -125,6 +125,11 @@ real keys.
 
 ## Deploy on Vercel
 
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fallanc92%2FHeadway-Companion-Project%2Ftree%2Fallanc92-intention-engine&env=AZURE_RESOURCE_NAME,AZURE_API_KEY,AZURE_DEPLOYMENT_NAME,AZURE_API_VERSION&envDescription=Azure%20OpenAI%20credentials%20(optional%20%E2%80%94%20the%20app%20runs%20in%20fallback%20mode%20without%20them))
+
+The button above imports this branch and prompts for the Azure variables (leave them blank
+to deploy in fallback mode). Or do it manually:
+
 1. Push this repo to GitHub and import it at [vercel.com/new](https://vercel.com/new).
 2. Add the `AZURE_*` variables above under **Project → Settings → Environment Variables**
    (they are stored encrypted and never live in the repo). Skip this to deploy in fallback
