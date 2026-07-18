@@ -153,7 +153,7 @@ remains demonstrable without model access.
 
 | Touchpoint | Route | Responsibility |
 | --- | --- | --- |
-| Companion conversation | `POST /api/chat` | Streams model text or a paced scripted fallback. |
+| Companion conversation | `POST /api/chat` | Streams NDJSON model deltas or a paced scripted fallback, followed by explicit completion metadata. |
 | Safety classification | `POST /api/safety` | Produces a tier 0-3 assessment with structured model output or heuristic fallback detection. |
 | Understanding | `POST /api/synthesize` | Produces a Zod-validated reflection, priorities, and spectrums or a deterministic fallback synthesis. |
 | Summary correction | `POST /api/refine` | Revises the structured understanding from conversational feedback. |
@@ -195,6 +195,20 @@ The absence of a database does **not** mean no data leaves the browser:
 conversation text reaches the deployed server and may reach Azure OpenAI in live
 mode. Infrastructure logging, retention, residency, consent, and deletion
 requirements would need explicit review before any production use.
+
+### Chat stream diagnostics
+
+Each `POST /api/chat` response includes an internal `x-request-id` header and
+an NDJSON stream of `delta`, `done`, or `error` events. A response is successful
+only after its `done` event arrives. If the connection ends early, the interface
+keeps any partial response but does not expose implementation details to the
+participant.
+
+For diagnosis, use the approximate time of the interruption and inspect the
+local terminal or the Vercel project's **Logs** view. Application chat logs
+contain diagnostic metadata such as request ID, lifecycle event, mode, message
+count, finish reason, error type, and elapsed time; they do not contain prompt
+or response text.
 
 ## Run locally
 

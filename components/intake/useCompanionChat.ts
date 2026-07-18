@@ -8,11 +8,85 @@ import type { ChatMessage, SafetyTier } from "@/lib/types";
 
 let counter = 0;
 const genId = () => `m${++counter}-${Date.now()}`;
+const genRequestId = () =>
+  typeof globalThis.crypto?.randomUUID === "function"
+    ? globalThis.crypto.randomUUID()
+    : genId();
 
 /** Fixed id for the assistant's opening greeting bubble. */
 const OPENING_ID = "opening";
 
-export type ChatStatus = "idle" | "streaming";
+export type ChatStatus =
+  | { type: "idle" }
+  | { type: "streaming" };
+
+type ChatStreamEvent =
+  | { type: "delta"; text: string }
+  | {
+      type: "done";
+      requestId: string;
+      finishReason: string;
+      usage: unknown;
+      elapsedMs: number;
+    }
+  | { type: "error"; requestId: string; message: string };
+
+class StreamInterruption extends Error {
+  constructor(
+    readonly requestId: string,
+    readonly displayMessage: string,
+  ) {
+    super(displayMessage);
+    this.name = "StreamInterruption";
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseStreamEvent(line: string): ChatStreamEvent {
+  let value: unknown;
+  try {
+    value = JSON.parse(line);
+  } catch {
+    throw new Error("Invalid chat stream JSON");
+  }
+
+  if (!isRecord(value)) throw new Error("Invalid chat stream event");
+
+  if (value.type === "delta" && typeof value.text === "string") {
+    return { type: "delta", text: value.text };
+  }
+  if (
+    value.type === "done" &&
+    typeof value.requestId === "string" &&
+    typeof value.finishReason === "string" &&
+    typeof value.elapsedMs === "number" &&
+    "usage" in value
+  ) {
+    return {
+      type: "done",
+      requestId: value.requestId,
+      finishReason: value.finishReason,
+      usage: value.usage,
+      elapsedMs: value.elapsedMs,
+    };
+  }
+  if (
+    value.type === "error" &&
+    typeof value.requestId === "string" &&
+    typeof value.message === "string"
+  ) {
+    return {
+      type: "error",
+      requestId: value.requestId,
+      message: value.message,
+    };
+  }
+
+  throw new Error("Invalid chat stream event");
+}
 
 /**
  * Strip the readiness marker (and any partial trailing fragment of it that is
@@ -60,7 +134,7 @@ export function useCompanionChat() {
     text: "",
   };
   const [messages, setMessages] = useState<ChatMessage[]>([openingMessage]);
-  const [status, setStatus] = useState<ChatStatus>("streaming");
+  const [status, setStatus] = useState<ChatStatus>({ type: "streaming" });
   const [ready, setReady] = useState(false);
   const messagesRef = useRef<ChatMessage[]>([openingMessage]);
   const busyRef = useRef(false);
@@ -81,33 +155,96 @@ export function useCompanionChat() {
   // reads the token stream into the target assistant bubble, hides the readiness
   // marker, and degrades gracefully on empty/failed responses.
   const runStream = useCallback(
-    async (assistantId: string, body: unknown, opts: StreamOptions) => {
-      setStatus("streaming");
+    async function consumeStream(
+      assistantId: string,
+      body: unknown,
+      opts: StreamOptions,
+    ) {
+      if (busyRef.current) return;
+
+      const requestId = genRequestId();
+      let diagnosticId = requestId;
+      let acc = "";
+      let sawReady = false;
+
+      setStatus({ type: "streaming" });
       busyRef.current = true;
       setReady(false);
 
       try {
         const res = await fetch("/api/chat", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "x-request-id": requestId,
+          },
           body: JSON.stringify(body),
         });
-        if (!res.body) throw new Error("No response body");
+        diagnosticId = res.headers.get("x-request-id") || requestId;
+        if (!res.ok) {
+          throw new StreamInterruption(
+            diagnosticId,
+            "The response could not be completed.",
+          );
+        }
+        if (!res.body) {
+          throw new StreamInterruption(
+            diagnosticId,
+            "The response ended before it began.",
+          );
+        }
 
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
-        let acc = "";
-        let sawReady = false;
+        let buffer = "";
+        let completed = false;
+
+        const processLine = (line: string) => {
+          if (!line.trim()) return;
+          if (completed) throw new Error("Event received after done");
+
+          const event = parseStreamEvent(line);
+          if (event.type === "delta") {
+            acc += event.text;
+            const { text, ready: isReady } = extractReadiness(acc);
+            if (isReady) sawReady = true;
+            commit((prev) =>
+              prev.map((message) =>
+                message.id === assistantId ? { ...message, text } : message,
+              ),
+            );
+            return;
+          }
+
+          if (event.requestId !== diagnosticId) {
+            throw new Error("Chat stream request ID mismatch");
+          }
+          if (event.type === "error") {
+            throw new StreamInterruption(event.requestId, event.message);
+          }
+          completed = true;
+        };
+
         for (;;) {
           const { value, done } = await reader.read();
           if (done) break;
-          acc += decoder.decode(value, { stream: true });
-          const { text, ready: isReady } = extractReadiness(acc);
-          if (isReady) sawReady = true;
-          commit((prev) =>
-            prev.map((m) => (m.id === assistantId ? { ...m, text } : m)),
+          buffer += decoder.decode(value, { stream: true });
+          let newline = buffer.indexOf("\n");
+          while (newline >= 0) {
+            processLine(buffer.slice(0, newline));
+            buffer = buffer.slice(newline + 1);
+            newline = buffer.indexOf("\n");
+          }
+        }
+        buffer += decoder.decode();
+        if (buffer.trim()) processLine(buffer);
+        if (!completed) {
+          throw new StreamInterruption(
+            diagnosticId,
+            "The response ended before it finished.",
           );
         }
+
         const { text: finalText, ready: finalReady } = extractReadiness(acc);
         if (!finalText.trim()) {
           commit((prev) =>
@@ -149,14 +286,18 @@ export function useCompanionChat() {
             setReady(true);
           }
         }
+        setStatus({ type: "idle" });
       } catch {
-        commit((prev) =>
-          prev.map((m) =>
-            m.id === assistantId ? { ...m, text: opts.errorFallback } : m,
-          ),
-        );
+        const currentText =
+          messagesRef.current.find((message) => message.id === assistantId)
+            ?.text ?? "";
+        // Keep a partial answer if any arrived. If none did, remove the empty
+        // bubble without surfacing implementation details to the participant.
+        if (!acc.trim() && !currentText.trim()) {
+          commit((prev) => prev.filter((message) => message.id !== assistantId));
+        }
+        setStatus({ type: "idle" });
       } finally {
-        setStatus("idle");
         busyRef.current = false;
       }
     },

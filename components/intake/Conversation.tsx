@@ -38,7 +38,7 @@ export function Conversation({
   const endRef = useRef<HTMLDivElement>(null);
   const shouldStickToBottomRef = useRef(true);
   const scrollFrameRef = useRef<number | null>(null);
-  const streaming = status === "streaming";
+  const streaming = status.type === "streaming";
   const last = messages[messages.length - 1];
   const waitingForReply = streaming && last?.role === "assistant" && last.text === "";
 
@@ -124,6 +124,7 @@ export function Conversation({
         }
       >
         {showChips && <SparkChips onPick={onSend} disabled={streaming} />}
+
         <Composer
           onSend={onSend}
           disabled={streaming || composerDisabled}

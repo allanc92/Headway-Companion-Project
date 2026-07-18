@@ -22,25 +22,120 @@ interface IncomingMessage {
   excludeFromSynthesis?: boolean;
 }
 
-function streamStringResponse(text: string): Response {
-  // Emit the text word-by-word for a gentle, unhurried cadence.
+interface StreamCompletion {
+  finishReason: string;
+  usage: unknown;
+}
+
+type StreamMode = "azure" | "fallback" | "safety-net";
+
+function errorType(error: unknown): string {
+  return error instanceof Error ? error.name : typeof error;
+}
+
+function streamResponse(
+  requestId: string,
+  startedAt: number,
+  mode: StreamMode,
+  produce: (emitDelta: (text: string) => boolean) => Promise<StreamCompletion>,
+): Response {
   const encoder = new TextEncoder();
-  const tokens = text.match(/\S+\s*/g) ?? [text];
+  let cancelled = false;
+
+  const encodeEvent = (event: object) =>
+    encoder.encode(`${JSON.stringify(event)}\n`);
+
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      for (const tok of tokens) {
-        controller.enqueue(encoder.encode(tok));
-        await new Promise((r) => setTimeout(r, 28));
+      try {
+        const completion = await produce((text) => {
+          if (cancelled) return false;
+          controller.enqueue(encodeEvent({ type: "delta", text }));
+          return true;
+        });
+        if (cancelled) return;
+
+        const elapsedMs = Date.now() - startedAt;
+        controller.enqueue(
+          encodeEvent({
+            type: "done",
+            requestId,
+            finishReason: completion.finishReason,
+            usage: completion.usage,
+            elapsedMs,
+          }),
+        );
+        console.info("[/api/chat]", {
+          event: "done",
+          requestId,
+          mode,
+          finishReason: completion.finishReason,
+          elapsedMs,
+        });
+      } catch (error) {
+        const elapsedMs = Date.now() - startedAt;
+        console.error("[/api/chat]", {
+          event: "stream-error",
+          requestId,
+          mode,
+          errorType: errorType(error),
+          elapsedMs,
+        });
+        if (!cancelled) {
+          controller.enqueue(
+            encodeEvent({
+              type: "error",
+              requestId,
+              message: "The companion response was interrupted.",
+            }),
+          );
+        }
+      } finally {
+        if (!cancelled) controller.close();
       }
-      controller.close();
+    },
+    cancel() {
+      cancelled = true;
+      console.info("[/api/chat]", {
+        event: "cancelled",
+        requestId,
+        mode,
+        elapsedMs: Date.now() - startedAt,
+      });
     },
   });
+
   return new Response(stream, {
-    headers: { "Content-Type": "text/plain; charset=utf-8" },
+    headers: {
+      "Cache-Control": "no-cache, no-transform",
+      "Content-Type": "application/x-ndjson; charset=utf-8",
+      "X-Content-Type-Options": "nosniff",
+      "x-request-id": requestId,
+    },
+  });
+}
+
+function streamStringResponse(
+  text: string,
+  requestId: string,
+  startedAt: number,
+  mode: Exclude<StreamMode, "azure">,
+): Response {
+  return streamResponse(requestId, startedAt, mode, async (emitDelta) => {
+    // Emit the text word-by-word for a gentle, unhurried cadence.
+    const tokens = text.match(/\S+\s*/g) ?? [text];
+    for (const token of tokens) {
+      if (!emitDelta(token)) break;
+      await new Promise((resolve) => setTimeout(resolve, 28));
+    }
+    return { finishReason: "stop", usage: null };
   });
 }
 
 export async function POST(req: Request): Promise<Response> {
+  const requestId =
+    req.headers.get("x-request-id")?.trim() || crypto.randomUUID();
+  const startedAt = Date.now();
   let messages: IncomingMessage[] = [];
   try {
     const body = await req.json();
@@ -66,13 +161,39 @@ export async function POST(req: Request): Promise<Response> {
   const continuingAfterOffer =
     lastMessage?.role === "user" &&
     lastMessage.excludeFromSynthesis === true;
+  const hasLiveModel = hasAzureCreds();
 
-  if (!hasAzureCreds()) {
-    if (isOpening) return streamStringResponse(fallbackOpening());
-    if (continuingAfterOffer) {
-      return streamStringResponse(SUMMARY_CONTINUE_ACKNOWLEDGMENT);
+  console.info("[/api/chat]", {
+    event: "request",
+    requestId,
+    mode: hasLiveModel ? "azure" : "fallback",
+    messageCount: messages.length,
+    isOpening,
+  });
+
+  if (!hasLiveModel) {
+    if (isOpening) {
+      return streamStringResponse(
+        fallbackOpening(),
+        requestId,
+        startedAt,
+        "fallback",
+      );
     }
-    return streamStringResponse(fallbackCompanionReply(userTexts));
+    if (continuingAfterOffer) {
+      return streamStringResponse(
+        SUMMARY_CONTINUE_ACKNOWLEDGMENT,
+        requestId,
+        startedAt,
+        "fallback",
+      );
+    }
+    return streamStringResponse(
+      fallbackCompanionReply(userTexts),
+      requestId,
+      startedAt,
+      "fallback",
+    );
   }
 
   // If the live model keeps circling past the safety-net threshold, emit one
@@ -80,6 +201,9 @@ export async function POST(req: Request): Promise<Response> {
   if (!isOpening && mirrorSafetyNet(userTexts)) {
     return streamStringResponse(
       `${SUMMARY_READINESS_PROMPT}\n${MIRROR_READY_MARKER}`,
+      requestId,
+      startedAt,
+      "safety-net",
     );
   }
 
@@ -109,13 +233,51 @@ export async function POST(req: Request): Promise<Response> {
       temperature: 0.7,
     });
 
-    return result.toTextStreamResponse();
-  } catch (err) {
-    console.error("[/api/chat] falling back:", err);
-    if (isOpening) return streamStringResponse(fallbackOpening());
-    if (continuingAfterOffer) {
-      return streamStringResponse(SUMMARY_CONTINUE_ACKNOWLEDGMENT);
+    return streamResponse(
+      requestId,
+      startedAt,
+      "azure",
+      async (emitDelta) => {
+        for await (const text of result.textStream) {
+          if (!emitDelta(text)) {
+            return { finishReason: "cancelled", usage: null };
+          }
+        }
+        const [finishReason, usage] = await Promise.all([
+          result.finishReason,
+          result.usage,
+        ]);
+        return { finishReason, usage };
+      },
+    );
+  } catch (error) {
+    console.error("[/api/chat]", {
+      event: "provider-init-error",
+      requestId,
+      errorType: errorType(error),
+      elapsedMs: Date.now() - startedAt,
+    });
+    if (isOpening) {
+      return streamStringResponse(
+        fallbackOpening(),
+        requestId,
+        startedAt,
+        "fallback",
+      );
     }
-    return streamStringResponse(fallbackCompanionReply(userTexts));
+    if (continuingAfterOffer) {
+      return streamStringResponse(
+        SUMMARY_CONTINUE_ACKNOWLEDGMENT,
+        requestId,
+        startedAt,
+        "fallback",
+      );
+    }
+    return streamStringResponse(
+      fallbackCompanionReply(userTexts),
+      requestId,
+      startedAt,
+      "fallback",
+    );
   }
 }
