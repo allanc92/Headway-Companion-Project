@@ -10,6 +10,11 @@ import type { ChatStatus } from "./useCompanionChat";
 import type { ReactNode } from "react";
 
 const BOTTOM_STICK_THRESHOLD_PX = 120;
+const GENERIC_THINKING_LABELS = [
+  "Taking in what you shared…",
+  "Finding the thread in that…",
+  "Putting a response together…",
+] as const;
 
 function isWindowNearBottom() {
   const page = document.documentElement;
@@ -41,6 +46,10 @@ export function Conversation({
   const streaming = status === "streaming";
   const last = messages[messages.length - 1];
   const waitingForReply = streaming && last?.role === "assistant" && last.text === "";
+  const thinkingLabel =
+    GENERIC_THINKING_LABELS[
+      (Math.max(userTurnCount, 1) - 1) % GENERIC_THINKING_LABELS.length
+    ];
 
   const visibleMessages = waitingForReply ? messages.slice(0, -1) : messages;
   // Pristine opening (no user turns yet, composer active): center the greeting,
@@ -109,7 +118,7 @@ export function Conversation({
         ))}
         {waitingForReply && (
           <div className="animate-rise">
-            <ThinkingShimmer />
+            <ThinkingShimmer label={thinkingLabel} />
           </div>
         )}
         {afterMessages}
