@@ -1,6 +1,6 @@
 import { FeatherIcon } from "@/components/ui/icons";
 
-export function ThinkingShimmer({ label = "Sitting with that…" }: { label?: string }) {
+export function ThinkingShimmer({ label }: { label: string }) {
   return (
     <div className="flex items-start gap-3">
       <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-mint-soft text-forest">
