@@ -20,7 +20,6 @@ function statusLabel(status: VoiceStatus): string {
 export function VoiceControls({
   status,
   micLevel,
-  caption,
   fallbackMessage,
   disabled,
   onStart,
@@ -28,7 +27,6 @@ export function VoiceControls({
 }: {
   status: VoiceStatus;
   micLevel: number;
-  caption: string;
   fallbackMessage: string | null;
   disabled?: boolean;
   onStart: () => void;
@@ -95,19 +93,6 @@ export function VoiceControls({
         >
           {VOICE_COPY.end}
         </button>
-      </div>
-
-      <div
-        className="mt-4 border-t border-hairline pt-3"
-        aria-live="polite"
-        aria-atomic="true"
-      >
-        <p className="text-[0.7rem] font-semibold uppercase tracking-[0.12em] text-ink-muted">
-          {VOICE_COPY.captionLabel}
-        </p>
-        <p className="mt-1 line-clamp-3 text-sm leading-relaxed text-ink-cool">
-          {caption || VOICE_COPY.captionWaiting}
-        </p>
       </div>
     </section>
   );

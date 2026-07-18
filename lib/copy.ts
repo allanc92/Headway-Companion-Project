@@ -68,8 +68,6 @@ export const VOICE_COPY = {
   speaking: "Huey is speaking",
   reconnecting: "Reconnecting…",
   activePlaceholder: "Voice conversation in progress…",
-  captionLabel: "Live captions",
-  captionWaiting: "Take your time. Huey is listening.",
   permissionFallback:
     "I couldn’t access your microphone. You can keep typing here.",
   unavailableFallback:
