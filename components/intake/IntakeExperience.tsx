@@ -285,7 +285,7 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
 
   useEffect(() => {
     if (stage !== "conversation") return;
-    if (!summaryReady || readinessStatus !== "idle") return;
+    if (!summaryReady || readinessStatus.type !== "idle") return;
     if (helpOpen) return;
     // Hold the transition until every outstanding safety check settles, so
     // overlapping classifications cannot clear the gate out of order.
