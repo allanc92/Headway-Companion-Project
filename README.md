@@ -51,6 +51,7 @@ Clear boundaries are part of the product, especially in a sensitive domain.
 | Capability | Status | Boundary |
 | --- | --- | --- |
 | Companion conversation | Implemented | Uses Azure OpenAI when configured and a scripted fallback otherwise. Huey is not a therapist or crisis service. |
+| Realtime voice conversation | Implemented behind flags | Uses browser-to-Azure WebRTC, server VAD, and live transcription when separately enabled and configured. It is not a crisis service and falls back quietly to text. |
 | Summary and refinement | Implemented | Produces a reflection, priorities, and working-style spectrums; it does not diagnose or recommend treatment. |
 | Provider matching | Simulated | Runs deterministic filtering and scoring over 14 fictional provider records using an approximate ZIP-to-state mapping. It does not establish clinical suitability or real network eligibility. |
 | Availability and booking | Simulated | Dates and times are generated deterministically from mock provider availability. No external scheduling system is contacted. |
@@ -128,7 +129,9 @@ flowchart LR
     UI[Next.js App Router UI]
     API[Next.js route handlers]
     Gate{Azure credentials available?}
-    Azure[Azure OpenAI]
+    Azure[Azure OpenAI text APIs]
+    Token[Ephemeral voice authorization]
+    Realtime[Azure GPT Realtime WebRTC]
     Fallback[Scripted fallbacks]
     Match[Deterministic match engine]
     Storage[(Browser localStorage)]
@@ -142,18 +145,23 @@ flowchart LR
     API --> Match
     UI --> Storage
     UI --> Analytics
+    UI --> Token
+    Token --> Azure
+    UI -->|WebRTC audio and events| Realtime
 ```
 
-The browser never calls Azure OpenAI directly. Conversation data is posted to
-server-side route handlers, which use Azure only when the required credentials
-are present. Every AI touchpoint has a fallback path so the full product journey
-remains demonstrable without model access.
+Text AI calls pass through server-side route handlers. When the separately
+flagged voice mode is enabled, the server only mints a short-lived client secret;
+the browser then sends WebRTC media directly to the configured Azure Realtime
+resource. The Azure resource key never enters the browser, and long-lived audio
+does not traverse the Next.js server.
 
 ### Responsibility split
 
 | Touchpoint | Route | Responsibility |
 | --- | --- | --- |
 | Companion conversation | `POST /api/chat` | Streams NDJSON model deltas or a paced scripted fallback, followed by explicit completion metadata. |
+| Voice authorization | `POST /api/realtime/session` | Mints a short-lived Azure client secret and supplies the direct WebRTC call URL; it never proxies media. |
 | Safety classification | `POST /api/safety` | Produces a tier 0-3 assessment with structured model output or heuristic fallback detection. |
 | Understanding | `POST /api/synthesize` | Produces a Zod-validated reflection, priorities, and spectrums or a deterministic fallback synthesis. |
 | Summary correction | `POST /api/refine` | Revises the structured understanding from conversational feedback. |
@@ -188,6 +196,7 @@ Provider filtering and scoring live in `lib/providers.ts`:
 | Data | Where it goes | App-level persistence |
 | --- | --- | --- |
 | Conversation text | Next.js API routes; forwarded to Azure OpenAI only when live credentials are configured | No application database |
+| Voice audio | Direct browser-to-Azure WebRTC while a call is active | Not stored by this application; tracks and playback objects are released when the call ends |
 | ZIP, insurance, summary, preferences, chosen fictional provider, and simulated booking | Browser only after the Intention is saved | Unencrypted `localStorage` until browser storage is cleared or the experience is restarted |
 | Page-level usage telemetry | Vercel Web Analytics is mounted globally | Governed by the configured Vercel project |
 
@@ -251,6 +260,17 @@ Then configure the deployment:
 | `AZURE_BASE_URL` | One of resource or base URL | Full endpoint when a custom base URL is needed |
 | `AZURE_API_VERSION` | No | Classic deployment API version; `.env.example` contains an example, not a compatibility guarantee |
 | `AZURE_USE_V1_API` | No | Set to `true` to use `/openai/v1` instead of deployment-based URLs |
+| `VOICE_ENABLED` | Yes for voice | Server-side voice gate; defaults to `false` |
+| `NEXT_PUBLIC_VOICE_ENABLED` | Yes for voice | Build-time UI gate; defaults to `false` |
+| `AZURE_REALTIME_DEPLOYMENT` | Yes for voice | Azure deployment name targeting `gpt-realtime-2` where available |
+| `AZURE_REALTIME_TRANSCRIPTION_DEPLOYMENT` | Yes for voice | Existing Azure speech-to-text deployment name used for canonical user captions |
+| `AZURE_REALTIME_VOICE` | No | Realtime output voice; defaults to `marin` |
+| `AZURE_REALTIME_ENDPOINT` | No | Full Azure resource endpoint when it differs from the text resource |
+
+Azure Realtime uses the GA `/openai/v1/realtime/client_secrets` and
+`/openai/v1/realtime/calls` endpoints. Do not add an `api-version` or use the
+deprecated preview session endpoint. Both feature flags must be `true`; otherwise
+the existing text experience is unchanged.
 
 Restart `npm run dev` after changing `.env.local`. The file is gitignored; never
 commit real credentials.
@@ -259,6 +279,7 @@ commit real credentials.
 
 ```bash
 npm run lint
+npx tsc --noEmit --incremental false
 npm run build
 ```
 
@@ -293,6 +314,7 @@ app/
   intake/page.tsx                  Conversation and inline post-chat journey
   api/
     chat/route.ts                  Streaming companion
+    realtime/session/route.ts      Ephemeral Realtime client secrets
     safety/route.ts                Tiered safety classification
     synthesize/route.ts            Structured understanding
     refine/route.ts                Conversational summary correction
@@ -303,6 +325,8 @@ components/
   intake/                          Chat, summary, matches, booking, Intention
 lib/
   azure.ts                         Credential gate and model provider
+  realtime.ts                      Server-only Realtime configuration
+  realtime-events.ts               Typed GA event reduction
   prompts.ts                       Companion, synthesis, and safety prompts
   providers.ts                     Fictional providers and match engine
   booking.ts                       Deterministic mock availability

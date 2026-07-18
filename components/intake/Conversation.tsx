@@ -5,8 +5,10 @@ import { MessageBubble } from "./MessageBubble";
 import { ThinkingShimmer } from "./ThinkingShimmer";
 import { SparkChips } from "./SparkChips";
 import { Composer } from "./Composer";
+import { VoiceControls } from "./VoiceControls";
 import type { ChatMessage } from "@/lib/types";
 import type { ChatStatus } from "./useCompanionChat";
+import type { VoiceStatus } from "./useVoiceSession";
 import type { ReactNode } from "react";
 
 const BOTTOM_STICK_THRESHOLD_PX = 120;
@@ -25,6 +27,13 @@ export function Conversation({
   progressKey,
   composerDisabled = false,
   composerPlaceholder,
+  voiceEnabled = false,
+  voiceStatus = "idle",
+  voiceMicLevel = 0,
+  voiceFallbackMessage = null,
+  voiceDisabled = false,
+  onVoiceStart,
+  onVoiceEnd,
 }: {
   messages: ChatMessage[];
   status: ChatStatus;
@@ -34,6 +43,13 @@ export function Conversation({
   progressKey?: string;
   composerDisabled?: boolean;
   composerPlaceholder?: string;
+  voiceEnabled?: boolean;
+  voiceStatus?: VoiceStatus;
+  voiceMicLevel?: number;
+  voiceFallbackMessage?: string | null;
+  voiceDisabled?: boolean;
+  onVoiceStart?: () => void;
+  onVoiceEnd?: () => void;
 }) {
   const endRef = useRef<HTMLDivElement>(null);
   const shouldStickToBottomRef = useRef(true);
@@ -43,6 +59,9 @@ export function Conversation({
   const waitingForReply = streaming && last?.role === "assistant" && last.text === "";
 
   const visibleMessages = waitingForReply ? messages.slice(0, -1) : messages;
+  const caption =
+    [...visibleMessages].reverse().find((message) => message.text.trim())?.text ??
+    "";
   // Pristine opening (no user turns yet, composer active): center the greeting,
   // chips and composer as one calm focal group rather than stranding the first
   // message at the top of a tall viewport. Flips to the growing transcript once
@@ -124,6 +143,18 @@ export function Conversation({
         }
       >
         {showChips && <SparkChips onPick={onSend} disabled={streaming} />}
+
+        {voiceEnabled && onVoiceStart && onVoiceEnd && (
+          <VoiceControls
+            status={voiceStatus}
+            micLevel={voiceMicLevel}
+            caption={caption}
+            fallbackMessage={voiceFallbackMessage}
+            disabled={voiceDisabled}
+            onStart={onVoiceStart}
+            onEnd={onVoiceEnd}
+          />
+        )}
 
         <Composer
           onSend={onSend}

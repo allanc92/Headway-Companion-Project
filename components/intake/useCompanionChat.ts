@@ -93,7 +93,10 @@ function parseStreamEvent(line: string): ChatStreamEvent {
  * still mid-stream) from text meant for display, so the sentinel never flashes
  * on screen. Returns the clean text and whether the full marker was present.
  */
-function extractReadiness(raw: string): { text: string; ready: boolean } {
+export function extractReadiness(raw: string): {
+  text: string;
+  ready: boolean;
+} {
   if (raw.includes(MIRROR_READY_MARKER)) {
     const text = raw.split(MIRROR_READY_MARKER).join("").trimEnd();
     return { text, ready: true };
@@ -106,6 +109,84 @@ function extractReadiness(raw: string): { text: string; ready: boolean } {
     }
   }
   return { text: raw, ready: false };
+}
+
+function extractVoiceReadiness(raw: string): {
+  text: string;
+  ready: boolean;
+} {
+  const result = extractReadiness(raw);
+  const normalize = (text: string) =>
+    text.trim().replace(/\s+/g, " ").toLocaleLowerCase();
+  return {
+    text: result.text,
+    ready:
+      result.ready ||
+      normalize(result.text) === normalize(SUMMARY_READINESS_PROMPT),
+  };
+}
+
+export type VoiceReadinessDecision = "confirm" | "continue";
+
+const VOICE_READINESS_CONFIRMATIONS = new Set([
+  "yes",
+  "yes please",
+  "yeah",
+  "yep",
+  "i am ready",
+  "im ready",
+  "yes i am ready",
+  "im ready for my summary",
+  "i am ready for my summary",
+  "im ready to see my summary",
+  "i am ready to see my summary",
+  "lets see my summary",
+  "lets see the summary",
+  "lets do it",
+]);
+
+const VOICE_READINESS_DECLINES = new Set([
+  "no",
+  "no thanks",
+  "no thank you",
+  "nope",
+  "not yet",
+  "no not yet",
+  "i am not ready",
+  "im not ready",
+  "keep talking",
+  "lets keep talking",
+  "i want to keep talking",
+  "id like to keep talking",
+  "i would like to keep talking",
+]);
+
+export function classifyVoiceReadinessResponse(
+  text: string,
+): VoiceReadinessDecision | null {
+  const normalized = text
+    .trim()
+    .toLowerCase()
+    .replace(/[’']/g, "")
+    .replace(/[.,!?;:]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (VOICE_READINESS_CONFIRMATIONS.has(normalized)) return "confirm";
+  if (VOICE_READINESS_DECLINES.has(normalized)) return "continue";
+  return null;
+}
+
+function readinessUserTexts(messages: ChatMessage[]): string[] {
+  const readinessWindowStart = messages.reduce(
+    (start, message, index) =>
+      message.excludeFromSynthesis ? index + 1 : start,
+    0,
+  );
+  return messages
+    .slice(readinessWindowStart)
+    .filter((message) => message.role === "user" && !message.excludeFromSynthesis)
+    .map((message) => message.text);
 }
 
 interface StreamOptions {
@@ -139,14 +220,13 @@ export function useCompanionChat() {
   const messagesRef = useRef<ChatMessage[]>([openingMessage]);
   const busyRef = useRef(false);
   const didGreetRef = useRef(false);
+  const voiceRawTextRef = useRef(new Map<string, string>());
 
   const commit = useCallback(
     (updater: (prev: ChatMessage[]) => ChatMessage[]) => {
-      setMessages((prev) => {
-        const next = updater(prev);
-        messagesRef.current = next;
-        return next;
-      });
+      const next = updater(messagesRef.current);
+      messagesRef.current = next;
+      setMessages(next);
     },
     [],
   );
@@ -260,15 +340,7 @@ export function useCompanionChat() {
           // A declined offer starts a fresh safety-net window. The model can still
           // offer sooner, but the fallback counter cannot immediately override the
           // person's choice to keep talking.
-          const readinessWindowStart = messagesRef.current.reduce(
-            (start, message, index) =>
-              message.excludeFromSynthesis ? index + 1 : start,
-            0,
-          );
-          const userTexts = messagesRef.current
-            .slice(readinessWindowStart)
-            .filter((m) => m.role === "user" && !m.excludeFromSynthesis)
-            .map((m) => m.text);
+          const userTexts = readinessUserTexts(messagesRef.current);
           if (finalReady || sawReady || mirrorSafetyNet(userTexts)) {
             // Keep readiness in the assistant turn already on screen so the
             // person never sees two conflicting questions back-to-back.
@@ -400,6 +472,97 @@ export function useCompanionChat() {
     [commit],
   );
 
+  const commitVoiceUserTurn = useCallback(
+    (text: string, options: MessageOptions = {}) => {
+      setReady(false);
+      return addUserMessage(text, options);
+    },
+    [addUserMessage],
+  );
+
+  const beginVoiceAssistantTurn = useCallback(() => {
+    const id = genId();
+    voiceRawTextRef.current.set(id, "");
+    commit((prev) => [
+      ...prev,
+      { id, role: "assistant", text: "" },
+    ]);
+    setStatus({ type: "streaming" });
+    return id;
+  }, [commit]);
+
+  const appendVoiceAssistantDelta = useCallback(
+    (id: string, delta: string) => {
+      const raw = (voiceRawTextRef.current.get(id) ?? "") + delta;
+      voiceRawTextRef.current.set(id, raw);
+      const { text } = extractReadiness(raw);
+      commit((prev) =>
+        prev.map((message) =>
+          message.id === id ? { ...message, text } : message,
+        ),
+      );
+    },
+    [commit],
+  );
+
+  const finalizeVoiceAssistantTurn = useCallback(
+    (id: string, finalTranscript: string) => {
+      const accumulated = voiceRawTextRef.current.get(id) ?? "";
+      const raw = finalTranscript.trim() ? finalTranscript : accumulated;
+      voiceRawTextRef.current.delete(id);
+      const result = extractVoiceReadiness(raw);
+      const isReady =
+        result.ready ||
+        mirrorSafetyNet(readinessUserTexts(messagesRef.current));
+
+      if (!result.text.trim()) {
+        commit((prev) => prev.filter((message) => message.id !== id));
+      } else if (isReady) {
+        commit((prev) =>
+          prev.map((message) =>
+            message.id === id
+              ? {
+                  ...message,
+                  text: SUMMARY_READINESS_PROMPT,
+                  excludeFromSynthesis: true,
+                }
+              : message,
+          ),
+        );
+        setReady(true);
+      } else {
+        commit((prev) =>
+          prev.map((message) =>
+            message.id === id
+              ? { ...message, text: result.text.trimEnd() }
+              : message,
+          ),
+        );
+      }
+      setStatus({ type: "idle" });
+    },
+    [commit],
+  );
+
+  const interruptVoiceAssistantTurn = useCallback(
+    (id: string) => {
+      const raw = voiceRawTextRef.current.get(id) ?? "";
+      voiceRawTextRef.current.delete(id);
+      const { text } = extractReadiness(raw);
+      commit((prev) =>
+        text.trim()
+          ? prev.map((message) =>
+              message.id === id
+                ? { ...message, text: text.trimEnd() }
+                : message,
+            )
+          : prev.filter((message) => message.id !== id),
+      );
+      setStatus({ type: "idle" });
+    },
+    [commit],
+  );
+
   const userTurnCount = messages.filter((m) => m.role === "user").length;
 
   /**
@@ -432,6 +595,11 @@ export function useCompanionChat() {
     send,
     addAssistantMessage,
     addUserMessage,
+    commitVoiceUserTurn,
+    beginVoiceAssistantTurn,
+    appendVoiceAssistantDelta,
+    finalizeVoiceAssistantTurn,
+    interruptVoiceAssistantTurn,
     userTurnCount,
     ready,
     flagSafety,

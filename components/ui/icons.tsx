@@ -150,3 +150,12 @@ export function HeartIcon(props: IconProps) {
     </svg>
   );
 }
+
+export function MicrophoneIcon(props: IconProps) {
+  return (
+    <svg {...base} width={20} height={20} {...props}>
+      <rect x="8" y="3" width="8" height="12" rx="4" />
+      <path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3M9 21h6" />
+    </svg>
+  );
+}

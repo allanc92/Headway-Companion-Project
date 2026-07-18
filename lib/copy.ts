@@ -60,6 +60,22 @@ export const CRISIS_RESOURCES: CrisisResource[] = [
 /** Always-on quiet help affordance. */
 export const HELP_LABEL = "Get help now";
 
+export const VOICE_COPY = {
+  start: "Talk to Huey",
+  end: "End call",
+  connecting: "Connecting…",
+  listening: "Listening…",
+  speaking: "Huey is speaking",
+  reconnecting: "Reconnecting…",
+  activePlaceholder: "Voice conversation in progress…",
+  captionLabel: "Live captions",
+  captionWaiting: "Take your time. Huey is listening.",
+  permissionFallback:
+    "I couldn’t access your microphone. You can keep typing here.",
+  unavailableFallback:
+    "Voice isn’t available right now. You can keep typing here.",
+} as const;
+
 /** Copy for the tiered safety overlay. */
 export const SAFETY_COPY: Record<
   1 | 2 | 3,

@@ -42,11 +42,12 @@ export function Composer({
         ref={ref}
         rows={1}
         value={value}
+        disabled={disabled}
         onChange={autoGrow}
         onKeyDown={handleKeyDown}
         placeholder={placeholder}
         aria-label="Your message"
-        className="max-h-[200px] flex-1 resize-none bg-transparent px-3 py-2 text-[1.05rem] leading-relaxed text-ink outline-none placeholder:text-ink-muted"
+        className="max-h-[200px] flex-1 resize-none bg-transparent px-3 py-2 text-[1.05rem] leading-relaxed text-ink outline-none placeholder:text-ink-muted disabled:cursor-not-allowed disabled:opacity-65"
       />
       <button
         type="button"
