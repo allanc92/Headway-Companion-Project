@@ -25,6 +25,9 @@ improvement.
 - Unified the voice button, session endpoint, and opening invitation behind one
   server-side runtime capability so deployments never advertise a missing
   control or freeze voice availability into the browser bundle at build time.
+- Kept transcription failures from masquerading as network failures, added a
+  grace period for transient WebRTC disconnects, and only replenish the bounded
+  reconnect budget after a session remains stable.
 
 ## Initial prototype - 2026-07-17
 
