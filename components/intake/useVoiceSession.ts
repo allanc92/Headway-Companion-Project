@@ -16,11 +16,14 @@ export type VoiceStatus =
   | "reconnecting"
   | "error";
 
+export type VoiceUserTranscriptAction = "stop-listening";
+
 interface VoiceSessionOptions {
   getConversation: () => ChatMessage[];
-  onUserTranscript: (text: string) => void;
+  onUserTranscript: (text: string) => VoiceUserTranscriptAction | void;
   onAssistantDelta: (turnId: string, text: string) => void;
   onAssistantDone: (turnId: string, text: string) => void;
+  onAssistantPlaybackDone: (turnId: string | null) => void;
   onAssistantInterrupted: (turnId: string) => void;
 }
 
@@ -113,10 +116,15 @@ export function useVoiceSession(options: VoiceSessionOptions) {
   const generationRef = useRef(0);
   const intentionalStopRef = useRef(true);
   const activeAssistantRef = useRef<string | null>(null);
+  const lastAssistantTurnRef = useRef<string | null>(null);
   const interruptedTurnsRef = useRef(new Set<string>());
+  const responseTurnIdsRef = useRef(new Map<string, string>());
+  const inputLockedRef = useRef(false);
+  const handoffResponsePendingRef = useRef(false);
   const awaitingTranscriptRef = useRef(false);
   const queuedAssistantEventsRef = useRef<VoiceTransportEvent[]>([]);
   const localTurnCounterRef = useRef(0);
+  const voiceOpeningPendingRef = useRef(false);
   const connectRef = useRef<
     ((generation: number) => Promise<void>) | null
   >(null);
@@ -159,6 +167,8 @@ export function useVoiceSession(options: VoiceSessionOptions) {
       audio.srcObject = null;
       audio.remove();
     }
+    responseTurnIdsRef.current.clear();
+    lastAssistantTurnRef.current = null;
   }, []);
 
   const stopMeter = useCallback(() => {
@@ -196,6 +206,9 @@ export function useVoiceSession(options: VoiceSessionOptions) {
       releaseAll();
       queuedAssistantEventsRef.current = [];
       awaitingTranscriptRef.current = false;
+      voiceOpeningPendingRef.current = false;
+      inputLockedRef.current = false;
+      handoffResponsePendingRef.current = false;
       setFallbackMessage(
         permissionDenied
           ? VOICE_COPY.permissionFallback
@@ -223,7 +236,12 @@ export function useVoiceSession(options: VoiceSessionOptions) {
         activeAssistantRef.current ??
         `voice-turn-${++localTurnCounterRef.current}`;
 
+      if (event.responseId) {
+        responseTurnIdsRef.current.set(event.responseId, turnId);
+      }
+      handoffResponsePendingRef.current = false;
       if (interruptedTurnsRef.current.has(turnId)) return;
+      lastAssistantTurnRef.current = turnId;
       if (
         activeAssistantRef.current &&
         activeAssistantRef.current !== turnId
@@ -237,12 +255,37 @@ export function useVoiceSession(options: VoiceSessionOptions) {
         return;
       }
 
-      optionsRef.current.onAssistantDone(turnId, event.text);
       if (activeAssistantRef.current === turnId) {
         activeAssistantRef.current = null;
       }
+      optionsRef.current.onAssistantDone(turnId, event.text);
     },
     [interruptActiveAssistant],
+  );
+
+  const emitAssistantPlaybackDone = useCallback(
+    (
+      event: Extract<
+        VoiceTransportEvent,
+        { type: "assistant-audio-stopped" }
+      >,
+    ) => {
+      const mappedTurnId = event.responseId
+        ? responseTurnIdsRef.current.get(event.responseId) ?? null
+        : null;
+      const turnId =
+        mappedTurnId ??
+        activeAssistantRef.current ??
+        lastAssistantTurnRef.current;
+      if (event.responseId) {
+        responseTurnIdsRef.current.delete(event.responseId);
+      }
+      if (lastAssistantTurnRef.current === turnId) {
+        lastAssistantTurnRef.current = null;
+      }
+      optionsRef.current.onAssistantPlaybackDone(turnId);
+    },
+    [],
   );
 
   const flushQueuedAssistantEvents = useCallback(() => {
@@ -254,20 +297,33 @@ export function useVoiceSession(options: VoiceSessionOptions) {
         event.type === "assistant-done"
       ) {
         emitAssistantEvent(event);
+      } else if (event.type === "assistant-audio-stopped") {
+        emitAssistantPlaybackDone(event);
       }
     }
-  }, [emitAssistantEvent]);
+  }, [emitAssistantEvent, emitAssistantPlaybackDone]);
 
   const handleTransportEvent = useCallback(
     (event: VoiceTransportEvent) => {
       switch (event.type) {
         case "user-transcript":
           awaitingTranscriptRef.current = false;
-          optionsRef.current.onUserTranscript(event.text);
+          if (
+            optionsRef.current.onUserTranscript(event.text) ===
+            "stop-listening"
+          ) {
+            inputLockedRef.current = true;
+            handoffResponsePendingRef.current = true;
+            mediaRef.current
+              ?.getAudioTracks()
+              .forEach((track) => (track.enabled = false));
+            setMicLevel(0);
+          }
           flushQueuedAssistantEvents();
           return;
         case "assistant-delta":
         case "assistant-done":
+          voiceOpeningPendingRef.current = false;
           if (awaitingTranscriptRef.current) {
             queuedAssistantEventsRef.current.push(event);
           } else {
@@ -275,6 +331,7 @@ export function useVoiceSession(options: VoiceSessionOptions) {
           }
           return;
         case "user-speech-started":
+          voiceOpeningPendingRef.current = false;
           awaitingTranscriptRef.current = true;
           queuedAssistantEventsRef.current = [];
           if (audioRef.current) audioRef.current.muted = true;
@@ -285,10 +342,16 @@ export function useVoiceSession(options: VoiceSessionOptions) {
           updateStatus("listening");
           return;
         case "assistant-audio-started":
+          voiceOpeningPendingRef.current = false;
           if (audioRef.current) audioRef.current.muted = false;
           updateStatus("speaking");
           return;
         case "assistant-audio-stopped":
+          if (awaitingTranscriptRef.current) {
+            queuedAssistantEventsRef.current.push(event);
+          } else {
+            emitAssistantPlaybackDone(event);
+          }
           if (statusRef.current !== "reconnecting") {
             updateStatus("listening");
           }
@@ -299,6 +362,7 @@ export function useVoiceSession(options: VoiceSessionOptions) {
     },
     [
       emitAssistantEvent,
+      emitAssistantPlaybackDone,
       flushQueuedAssistantEvents,
       interruptActiveAssistant,
       updateStatus,
@@ -427,8 +491,15 @@ export function useVoiceSession(options: VoiceSessionOptions) {
         ) {
           return;
         }
+        // Give a pending response full context before restoring microphone input.
         sendConversationHistory(channel);
-        microphone.enabled = true;
+        if (
+          voiceOpeningPendingRef.current ||
+          handoffResponsePendingRef.current
+        ) {
+          channel.send(JSON.stringify({ type: "response.create" }));
+        }
+        microphone.enabled = !inputLockedRef.current;
         reconnectAttemptsRef.current = 0;
         updateStatus("listening");
       });
@@ -501,6 +572,7 @@ export function useVoiceSession(options: VoiceSessionOptions) {
     }
 
     interruptActiveAssistant();
+    if (intentionalStopRef.current || !mediaRef.current) return;
     closePeer();
     mediaRef.current
       .getAudioTracks()
@@ -544,8 +616,13 @@ export function useVoiceSession(options: VoiceSessionOptions) {
     intentionalStopRef.current = false;
     reconnectAttemptsRef.current = 0;
     interruptedTurnsRef.current.clear();
+    responseTurnIdsRef.current.clear();
+    lastAssistantTurnRef.current = null;
+    inputLockedRef.current = false;
+    handoffResponsePendingRef.current = false;
     awaitingTranscriptRef.current = false;
     queuedAssistantEventsRef.current = [];
+    voiceOpeningPendingRef.current = true;
     setFallbackMessage(null);
     updateStatus("connecting");
     const generation = ++generationRef.current;
@@ -583,8 +660,11 @@ export function useVoiceSession(options: VoiceSessionOptions) {
     clearReconnectTimer();
     interruptActiveAssistant();
     releaseAll();
+    inputLockedRef.current = false;
+    handoffResponsePendingRef.current = false;
     awaitingTranscriptRef.current = false;
     queuedAssistantEventsRef.current = [];
+    voiceOpeningPendingRef.current = false;
     setFallbackMessage(null);
     updateStatus("idle");
   }, [
@@ -600,6 +680,9 @@ export function useVoiceSession(options: VoiceSessionOptions) {
       generationRef.current += 1;
       clearReconnectTimer();
       releaseAll();
+      voiceOpeningPendingRef.current = false;
+      inputLockedRef.current = false;
+      handoffResponsePendingRef.current = false;
     };
     window.addEventListener("pagehide", releaseOnPageHide);
     return () => {

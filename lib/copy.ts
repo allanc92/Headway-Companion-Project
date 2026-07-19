@@ -8,13 +8,15 @@ export interface SparkChip {
 
 /** Huey's explicit consent check before the conversation becomes a summary. */
 export const SUMMARY_READINESS_PROMPT =
-  "I feel like I have enough to reflect back what I’ve heard so far. Are you ready for me to put together a simple summary, or would you like to keep talking?";
+  "I feel like I have enough to reflect back what I’ve heard. I can turn it into a simple summary for you to review, then use it to find therapists who fit and choose a first session. Are you ready for me to put that together, or would you like to keep talking?";
 
 /** User turns recorded when either readiness action is chosen. */
 export const SUMMARY_CONFIRMATION_RESPONSE = "I’m ready to see my summary.";
 export const SUMMARY_CONTINUE_RESPONSE = "I’d like to keep talking a little longer.";
 export const SUMMARY_CONTINUE_ACKNOWLEDGMENT =
   "Of course. We can stay with this a little longer. What feels important to add or spend more time with?";
+export const VOICE_SUMMARY_HANDOFF =
+  "Okay, I’ll jump off the call and get that summary created for you. You can always chat or talk to me again if it doesn’t feel right or if you have more questions.";
 
 /** Tapping a chip sends a gentle signal that summons more companionship. */
 export const SPARK_CHIPS: SparkChip[] = [

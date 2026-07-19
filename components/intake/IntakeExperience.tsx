@@ -55,6 +55,13 @@ type IntakeStage =
   | "booking"
   | "intention";
 
+interface PendingVoiceSummaryHandoff {
+  transcript: ChatMessage[];
+  turnId: string | null;
+  assistantDone: boolean;
+  playbackDone: boolean;
+}
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const READINESS_PROMPT_DELAY_MS = 1100;
@@ -91,6 +98,8 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
   const readinessDecisionRef = useRef(false);
   const synthesizingRef = useRef(false);
   const voiceAssistantTurnsRef = useRef(new Map<string, string>());
+  const pendingVoiceSummaryHandoffRef =
+    useRef<PendingVoiceSummaryHandoff | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -144,8 +153,7 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
       if (stage === "confirming") {
         const decision = classifyVoiceReadinessResponse(text);
         if (decision === "confirm") {
-          confirmSummary();
-          return;
+          return beginVoiceSummaryHandoff(text);
         }
         if (decision === "continue") {
           continueConversation(text);
@@ -158,25 +166,66 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
       void runSafety(text);
     },
     onAssistantDelta: (turnId, text) => {
+      const handoff = pendingVoiceSummaryHandoffRef.current;
+      const isHandoffTurn =
+        handoff !== null &&
+        (handoff.turnId === null || handoff.turnId === turnId);
+      if (handoff && handoff.turnId === null) {
+        handoff.turnId = turnId;
+      }
       let messageId = voiceAssistantTurnsRef.current.get(turnId);
       if (!messageId) {
-        messageId = chat.beginVoiceAssistantTurn();
+        messageId = chat.beginVoiceAssistantTurn({
+          excludeFromSynthesis: isHandoffTurn,
+        });
         voiceAssistantTurnsRef.current.set(turnId, messageId);
       }
       chat.appendVoiceAssistantDelta(messageId, text);
     },
     onAssistantDone: (turnId, text) => {
+      const handoff = pendingVoiceSummaryHandoffRef.current;
+      const isHandoffTurn =
+        handoff !== null &&
+        (handoff.turnId === null || handoff.turnId === turnId);
+      if (handoff && handoff.turnId === null) {
+        handoff.turnId = turnId;
+      }
       let messageId = voiceAssistantTurnsRef.current.get(turnId);
       if (!messageId) {
-        messageId = chat.beginVoiceAssistantTurn();
+        messageId = chat.beginVoiceAssistantTurn({
+          excludeFromSynthesis: isHandoffTurn,
+        });
       }
-      chat.finalizeVoiceAssistantTurn(messageId, text);
+      const becameReady = chat.finalizeVoiceAssistantTurn(messageId, text, {
+        trackReadiness: !isHandoffTurn,
+      });
       voiceAssistantTurnsRef.current.delete(turnId);
+      if (handoff && isHandoffTurn) {
+        handoff.assistantDone = true;
+        maybeCompleteVoiceSummaryHandoff();
+        return;
+      }
+      if (becameReady) {
+        readinessDecisionRef.current = false;
+        setStage("confirming");
+      }
+    },
+    onAssistantPlaybackDone: (turnId) => {
+      const handoff = pendingVoiceSummaryHandoffRef.current;
+      if (!handoff || handoff.turnId !== turnId) return;
+      handoff.playbackDone = true;
+      maybeCompleteVoiceSummaryHandoff();
     },
     onAssistantInterrupted: (turnId) => {
       const messageId = voiceAssistantTurnsRef.current.get(turnId);
       if (messageId) chat.interruptVoiceAssistantTurn(messageId);
       voiceAssistantTurnsRef.current.delete(turnId);
+      const handoff = pendingVoiceSummaryHandoffRef.current;
+      if (handoff?.turnId === turnId) {
+        handoff.assistantDone = true;
+        handoff.playbackDone = true;
+        maybeCompleteVoiceSummaryHandoff();
+      }
     },
   });
 
@@ -263,6 +312,53 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
     } finally {
       synthesizingRef.current = false;
     }
+  }
+
+  function beginVoiceSummaryHandoff(
+    text: string,
+  ): "stop-listening" | undefined {
+    if (
+      stage !== "confirming" ||
+      readinessDecisionRef.current ||
+      synthesizingRef.current
+    ) {
+      return;
+    }
+
+    readinessDecisionRef.current = true;
+    pendingVoiceSummaryHandoffRef.current = {
+      transcript: chat.commitVoiceUserTurn(text, {
+        excludeFromSynthesis: true,
+      }),
+      turnId: null,
+      assistantDone: false,
+      playbackDone: false,
+    };
+    return "stop-listening";
+  }
+
+  function maybeCompleteVoiceSummaryHandoff() {
+    const handoff = pendingVoiceSummaryHandoffRef.current;
+    if (!handoff?.assistantDone || !handoff.playbackDone) return;
+
+    completeVoiceSummaryHandoff(handoff);
+  }
+
+  function completeVoiceSummaryHandoff(
+    handoff: PendingVoiceSummaryHandoff,
+  ) {
+    pendingVoiceSummaryHandoffRef.current = null;
+    voice.stop();
+    void goToMirror(handoff.transcript);
+  }
+
+  function handleVoiceEnd() {
+    const handoff = pendingVoiceSummaryHandoffRef.current;
+    if (handoff) {
+      completeVoiceSummaryHandoff(handoff);
+      return;
+    }
+    voice.stop();
   }
 
   function confirmSummary() {
@@ -589,7 +685,7 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
           voiceFallbackMessage={voice.fallbackMessage}
           voiceDisabled={chat.status.type === "streaming"}
           onVoiceStart={voice.start}
-          onVoiceEnd={voice.stop}
+          onVoiceEnd={handleVoiceEnd}
         />
       </main>
 
