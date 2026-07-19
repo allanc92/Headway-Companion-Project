@@ -21,17 +21,39 @@ function responseHeaders(requestId: string): HeadersInit {
   };
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+async function providerErrorDetails(
+  response: Response,
+): Promise<Record<string, string>> {
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch {
+    return {};
+  }
+
+  if (!isRecord(payload) || !isRecord(payload.error)) return {};
+  const details: Record<string, string> = {};
+  for (const key of ["code", "type", "param", "message"] as const) {
+    if (typeof payload.error[key] === "string") {
+      details[`upstream${key[0].toUpperCase()}${key.slice(1)}`] =
+        payload.error[key];
+    }
+  }
+  return details;
+}
+
 function isClientSecretResponse(
   value: unknown,
 ): value is { value: string; expires_at: number } {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return false;
-  }
-  const record = value as Record<string, unknown>;
+  if (!isRecord(value)) return false;
   return (
-    typeof record.value === "string" &&
-    record.value.length > 0 &&
-    typeof record.expires_at === "number"
+    typeof value.value === "string" &&
+    value.value.length > 0 &&
+    typeof value.expires_at === "number"
   );
 }
 
@@ -73,11 +95,13 @@ export async function POST(req: Request): Promise<Response> {
     });
 
     if (!upstream.ok) {
+      const errorDetails = await providerErrorDetails(upstream);
       console.error("[/api/realtime/session]", {
         event: "provider-error",
         requestId,
         mode: "azure-webrtc",
         upstreamStatus: upstream.status,
+        ...errorDetails,
         elapsedMs: Date.now() - startedAt,
       });
       return Response.json(
@@ -104,6 +128,7 @@ export async function POST(req: Request): Promise<Response> {
         clientSecret: secret.value,
         expiresAt: secret.expires_at,
         model: config.deployment,
+        transcriptionModel: config.transcriptionDeployment,
         voice: config.voice,
         webrtcUrl: realtimeCallsUrl(config),
       },

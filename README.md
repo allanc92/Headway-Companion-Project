@@ -51,7 +51,7 @@ Clear boundaries are part of the product, especially in a sensitive domain.
 | Capability | Status | Boundary |
 | --- | --- | --- |
 | Companion conversation | Implemented | Uses Azure OpenAI when configured and a scripted fallback otherwise. Huey is not a therapist or crisis service. |
-| Realtime voice conversation | Implemented behind flags | Uses browser-to-Azure WebRTC, server VAD, and live transcription when separately enabled and configured. It is not a crisis service and falls back quietly to text. |
+| Realtime voice conversation | Implemented behind a runtime flag | Uses browser-to-Azure WebRTC, server VAD, and live transcription when enabled and configured. It is not a crisis service and falls back quietly to text. |
 | Summary and refinement | Implemented | Produces a reflection, priorities, and working-style spectrums; it does not diagnose or recommend treatment. |
 | Provider matching | Simulated | Runs deterministic filtering and scoring over 14 fictional provider records using an approximate ZIP-to-state mapping. It does not establish clinical suitability or real network eligibility. |
 | Availability and booking | Simulated | Dates and times are generated deterministically from mock provider availability. No external scheduling system is contacted. |
@@ -261,17 +261,17 @@ Then configure the deployment:
 | `AZURE_BASE_URL` | One of resource or base URL | Full endpoint when a custom base URL is needed |
 | `AZURE_API_VERSION` | No | Classic deployment API version; `.env.example` contains an example, not a compatibility guarantee |
 | `AZURE_USE_V1_API` | No | Set to `true` to use `/openai/v1` instead of deployment-based URLs |
-| `VOICE_ENABLED` | Yes for voice | Server-side voice gate; defaults to `false` |
-| `NEXT_PUBLIC_VOICE_ENABLED` | Yes for voice | Build-time UI gate; defaults to `false` |
-| `AZURE_REALTIME_DEPLOYMENT` | Yes for voice | Azure deployment name targeting `gpt-realtime-2` where available |
-| `AZURE_REALTIME_TRANSCRIPTION_DEPLOYMENT` | Yes for voice | Existing Azure speech-to-text deployment name used for canonical user captions |
+| `VOICE_ENABLED` | Yes for voice | Server-side runtime gate shared by the session endpoint, UI, and opening copy; defaults to `false` |
+| `AZURE_REALTIME_DEPLOYMENT` | Yes for voice | Azure deployment name targeting `gpt-realtime-2.1` where available |
+| `AZURE_REALTIME_TRANSCRIPTION_DEPLOYMENT` | Yes for voice | Azure input-transcription model or deployment name, such as `gpt-4o-transcribe`, used for canonical user captions |
 | `AZURE_REALTIME_VOICE` | No | Realtime output voice; defaults to `marin` |
 | `AZURE_REALTIME_ENDPOINT` | No | Full Azure resource endpoint when it differs from the text resource |
 
 Azure Realtime uses the GA `/openai/v1/realtime/client_secrets` and
 `/openai/v1/realtime/calls` endpoints. Do not add an `api-version` or use the
-deprecated preview session endpoint. Both feature flags must be `true`; otherwise
-the existing text experience is unchanged.
+deprecated preview session endpoint. `VOICE_ENABLED` must be `true` and every
+required Realtime value must be present; otherwise the existing text experience
+is unchanged and Huey does not advertise an unavailable voice control.
 
 Restart `npm run dev` after changing `.env.local`. The file is gitignored; never
 commit real credentials.

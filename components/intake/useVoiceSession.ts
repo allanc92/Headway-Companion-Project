@@ -30,6 +30,7 @@ interface VoiceSessionOptions {
 interface VoiceSessionAuthorization {
   clientSecret: string;
   expiresAt: number;
+  transcriptionModel: string;
   webrtcUrl: string;
 }
 
@@ -56,6 +57,8 @@ export function parseVoiceSessionAuthorization(
     typeof value.clientSecret !== "string" ||
     !value.clientSecret ||
     typeof value.expiresAt !== "number" ||
+    typeof value.transcriptionModel !== "string" ||
+    !value.transcriptionModel ||
     typeof value.webrtcUrl !== "string"
   ) {
     return null;
@@ -71,6 +74,7 @@ export function parseVoiceSessionAuthorization(
   return {
     clientSecret: value.clientSecret,
     expiresAt: value.expiresAt,
+    transcriptionModel: value.transcriptionModel,
     webrtcUrl: value.webrtcUrl,
   };
 }
@@ -358,6 +362,9 @@ export function useVoiceSession(options: VoiceSessionOptions) {
           return;
         case "transport-error":
           recoverRef.current();
+          return;
+        case "session-ready":
+          return;
       }
     },
     [
@@ -476,14 +483,14 @@ export function useVoiceSession(options: VoiceSessionOptions) {
 
       const channel = peer.createDataChannel("oai-events");
       channelRef.current = channel;
+      let sessionReady = false;
       const openDeadline = window.setTimeout(() => {
-        if (channel.readyState !== "open" && peerRef.current === peer) {
+        if (!sessionReady && peerRef.current === peer) {
           recoverRef.current();
         }
       }, REQUEST_TIMEOUT_MS);
 
       channel.addEventListener("open", () => {
-        window.clearTimeout(openDeadline);
         if (
           peerRef.current !== peer ||
           generation !== generationRef.current ||
@@ -491,23 +498,52 @@ export function useVoiceSession(options: VoiceSessionOptions) {
         ) {
           return;
         }
-        // Give a pending response full context before restoring microphone input.
-        sendConversationHistory(channel);
-        if (
-          voiceOpeningPendingRef.current ||
-          handoffResponsePendingRef.current
-        ) {
-          channel.send(JSON.stringify({ type: "response.create" }));
-        }
-        microphone.enabled = !inputLockedRef.current;
-        reconnectAttemptsRef.current = 0;
-        updateStatus("listening");
+        channel.send(
+          JSON.stringify({
+            type: "session.update",
+            session: {
+              type: "realtime",
+              output_modalities: ["audio"],
+              audio: {
+                input: {
+                  transcription: {
+                    model: authorization.transcriptionModel,
+                  },
+                  turn_detection: {
+                    type: "server_vad",
+                    threshold: 0.5,
+                    prefix_padding_ms: 300,
+                    silence_duration_ms: 650,
+                    create_response: true,
+                    interrupt_response: true,
+                  },
+                },
+              },
+            },
+          }),
+        );
       });
       channel.addEventListener("message", (message) => {
         if (peerRef.current !== peer || typeof message.data !== "string") {
           return;
         }
         const event = parseRealtimeServerEvent(message.data);
+        if (event?.type === "session-ready" && !sessionReady) {
+          sessionReady = true;
+          window.clearTimeout(openDeadline);
+          // Give a pending response full context before restoring microphone input.
+          sendConversationHistory(channel);
+          if (
+            voiceOpeningPendingRef.current ||
+            handoffResponsePendingRef.current
+          ) {
+            channel.send(JSON.stringify({ type: "response.create" }));
+          }
+          microphone.enabled = !inputLockedRef.current;
+          reconnectAttemptsRef.current = 0;
+          updateStatus("listening");
+          return;
+        }
         if (event) handleTransportEvent(event);
       });
       channel.addEventListener("close", () => {

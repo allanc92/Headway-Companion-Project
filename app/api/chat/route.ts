@@ -2,10 +2,11 @@ import { streamText, type ModelMessage } from "ai";
 import { getModel, hasAzureCreds } from "@/lib/azure";
 import {
   COMPANION_SYSTEM,
-  COMPANION_GREETING,
   COMPANION_FIT_NUDGE,
   GREETING_TRIGGER,
+  companionGreeting,
 } from "@/lib/prompts";
+import { isVoiceEnabled } from "@/lib/realtime";
 import {
   SUMMARY_CONTINUE_ACKNOWLEDGMENT,
   SUMMARY_READINESS_PROMPT,
@@ -162,6 +163,7 @@ export async function POST(req: Request): Promise<Response> {
     lastMessage?.role === "user" &&
     lastMessage.excludeFromSynthesis === true;
   const hasLiveModel = hasAzureCreds();
+  const voiceEnabled = isVoiceEnabled();
 
   console.info("[/api/chat]", {
     event: "request",
@@ -169,12 +171,13 @@ export async function POST(req: Request): Promise<Response> {
     mode: hasLiveModel ? "azure" : "fallback",
     messageCount: messages.length,
     isOpening,
+    voiceEnabled,
   });
 
   if (!hasLiveModel) {
     if (isOpening) {
       return streamStringResponse(
-        fallbackOpening(),
+        fallbackOpening(voiceEnabled),
         requestId,
         startedAt,
         "fallback",
@@ -221,7 +224,7 @@ export async function POST(req: Request): Promise<Response> {
     // model is still circling in "feeling heard" after several substantive turns.
     // Both are invisible to the person and never rendered as a step.
     const system = isOpening
-      ? `${COMPANION_GREETING}\n\n${COMPANION_SYSTEM}`
+      ? `${companionGreeting(voiceEnabled)}\n\n${COMPANION_SYSTEM}`
       : fitNudgeSafetyNet(userTexts)
         ? `${COMPANION_SYSTEM}\n\n${COMPANION_FIT_NUDGE}`
         : COMPANION_SYSTEM;
@@ -259,7 +262,7 @@ export async function POST(req: Request): Promise<Response> {
     });
     if (isOpening) {
       return streamStringResponse(
-        fallbackOpening(),
+        fallbackOpening(voiceEnabled),
         requestId,
         startedAt,
         "fallback",
