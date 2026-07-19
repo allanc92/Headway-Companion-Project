@@ -1,11 +1,18 @@
 import { generateObject } from "ai";
 import { z } from "zod";
 import { getModel, hasAzureCreds } from "@/lib/azure";
+import {
+  errorType,
+  getRequestId,
+  jsonWithRequestId,
+  logApiEvent,
+} from "@/lib/api-observability";
 import { buildRefinePrompt } from "@/lib/prompts";
 import { fallbackRefine } from "@/lib/fallback";
 import { FOCUS_AREAS, SPECTRUM_META, type Synthesis } from "@/lib/types";
 
 export const maxDuration = 30;
+const ACTIVITY = "summary-refinement";
 
 interface IncomingMessage {
   role: "user" | "assistant";
@@ -55,6 +62,8 @@ function readSynthesis(value: unknown): Synthesis {
 }
 
 export async function POST(req: Request): Promise<Response> {
+  const requestId = getRequestId(req);
+  const startedAt = Date.now();
   let messages: IncomingMessage[] = [];
   let current: Synthesis = { reflection: "", priorities: [], spectrums: [] };
 
@@ -67,9 +76,28 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   const transcript = buildTranscript(messages);
+  const hasLiveModel = hasAzureCreds();
 
-  if (!hasAzureCreds()) {
-    return Response.json(fallbackRefine(transcript, current));
+  logApiEvent("/api/refine", "info", {
+    activity: ACTIVITY,
+    event: "request",
+    requestId,
+    mode: hasLiveModel ? "azure" : "fallback",
+    messageCount: messages.length,
+    currentPriorityCount: current.priorities.length,
+  });
+
+  if (!hasLiveModel) {
+    const refinement = fallbackRefine(transcript, current);
+    logApiEvent("/api/refine", "info", {
+      activity: ACTIVITY,
+      event: "done",
+      requestId,
+      mode: "fallback",
+      priorityCount: refinement.priorities.length,
+      elapsedMs: Date.now() - startedAt,
+    });
+    return jsonWithRequestId(refinement, requestId);
   }
 
   try {
@@ -84,7 +112,7 @@ export async function POST(req: Request): Promise<Response> {
       temperature: 0.35,
     });
 
-    return Response.json({
+    const refinement = {
       reflection: object.reflection,
       priorities: object.priorities.map((p, i) => ({
         id: `p-${i}`,
@@ -101,9 +129,36 @@ export async function POST(req: Request): Promise<Response> {
         rightLabel: SPECTRUM_META[s.id].rightLabel,
       })),
       acknowledgment: object.acknowledgment,
+    };
+
+    logApiEvent("/api/refine", "info", {
+      activity: ACTIVITY,
+      event: "done",
+      requestId,
+      mode: "azure",
+      priorityCount: refinement.priorities.length,
+      elapsedMs: Date.now() - startedAt,
     });
-  } catch (err) {
-    console.error("[/api/refine] falling back:", err);
-    return Response.json(fallbackRefine(transcript, current));
+    return jsonWithRequestId(refinement, requestId);
+  } catch (error) {
+    logApiEvent("/api/refine", "error", {
+      activity: ACTIVITY,
+      event: "provider-error",
+      requestId,
+      mode: "azure",
+      errorType: errorType(error),
+      elapsedMs: Date.now() - startedAt,
+    });
+    const refinement = fallbackRefine(transcript, current);
+    logApiEvent("/api/refine", "info", {
+      activity: ACTIVITY,
+      event: "done",
+      requestId,
+      mode: "fallback",
+      fallbackReason: "provider-error",
+      priorityCount: refinement.priorities.length,
+      elapsedMs: Date.now() - startedAt,
+    });
+    return jsonWithRequestId(refinement, requestId);
   }
 }

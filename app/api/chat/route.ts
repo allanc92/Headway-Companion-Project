@@ -11,10 +11,17 @@ import {
   SUMMARY_READINESS_PROMPT,
 } from "@/lib/copy";
 import { fallbackCompanionReply, fallbackOpening } from "@/lib/fallback";
+import {
+  errorType,
+  getRequestId,
+  logApiEvent,
+  withRequestId,
+} from "@/lib/api-observability";
 import { fitNudgeSafetyNet, mirrorSafetyNet } from "@/lib/signal";
 import { MIRROR_READY_MARKER } from "@/lib/types";
 
 export const maxDuration = 30;
+const ACTIVITY = "companion-response";
 
 interface IncomingMessage {
   role: "user" | "assistant";
@@ -29,10 +36,6 @@ interface StreamCompletion {
 
 type StreamMode = "azure" | "fallback" | "safety-net";
 
-function errorType(error: unknown): string {
-  return error instanceof Error ? error.name : typeof error;
-}
-
 function streamResponse(
   requestId: string,
   startedAt: number,
@@ -41,6 +44,8 @@ function streamResponse(
 ): Response {
   const encoder = new TextEncoder();
   let cancelled = false;
+  let outputChunkCount = 0;
+  let outputCharacterCount = 0;
 
   const encodeEvent = (event: object) =>
     encoder.encode(`${JSON.stringify(event)}\n`);
@@ -50,6 +55,19 @@ function streamResponse(
       try {
         const completion = await produce((text) => {
           if (cancelled) return false;
+          if (text.length > 0) {
+            outputChunkCount += 1;
+            outputCharacterCount += text.length;
+            if (outputChunkCount === 1) {
+              logApiEvent("/api/chat", "info", {
+                activity: ACTIVITY,
+                event: "first-output",
+                requestId,
+                mode,
+                elapsedMs: Date.now() - startedAt,
+              });
+            }
+          }
           controller.enqueue(encodeEvent({ type: "delta", text }));
           return true;
         });
@@ -65,20 +83,26 @@ function streamResponse(
             elapsedMs,
           }),
         );
-        console.info("[/api/chat]", {
+        logApiEvent("/api/chat", "info", {
+          activity: ACTIVITY,
           event: "done",
           requestId,
           mode,
           finishReason: completion.finishReason,
+          outputChunkCount,
+          outputCharacterCount,
           elapsedMs,
         });
       } catch (error) {
         const elapsedMs = Date.now() - startedAt;
-        console.error("[/api/chat]", {
+        logApiEvent("/api/chat", "error", {
+          activity: ACTIVITY,
           event: "stream-error",
           requestId,
           mode,
           errorType: errorType(error),
+          outputChunkCount,
+          outputCharacterCount,
           elapsedMs,
         });
         if (!cancelled) {
@@ -96,22 +120,24 @@ function streamResponse(
     },
     cancel() {
       cancelled = true;
-      console.info("[/api/chat]", {
+      logApiEvent("/api/chat", "info", {
+        activity: ACTIVITY,
         event: "cancelled",
         requestId,
         mode,
+        outputChunkCount,
+        outputCharacterCount,
         elapsedMs: Date.now() - startedAt,
       });
     },
   });
 
   return new Response(stream, {
-    headers: {
+    headers: withRequestId(requestId, {
       "Cache-Control": "no-cache, no-transform",
       "Content-Type": "application/x-ndjson; charset=utf-8",
       "X-Content-Type-Options": "nosniff",
-      "x-request-id": requestId,
-    },
+    }),
   });
 }
 
@@ -133,8 +159,7 @@ function streamStringResponse(
 }
 
 export async function POST(req: Request): Promise<Response> {
-  const requestId =
-    req.headers.get("x-request-id")?.trim() || crypto.randomUUID();
+  const requestId = getRequestId(req);
   const startedAt = Date.now();
   let messages: IncomingMessage[] = [];
   try {
@@ -163,7 +188,8 @@ export async function POST(req: Request): Promise<Response> {
     lastMessage.excludeFromSynthesis === true;
   const hasLiveModel = hasAzureCreds();
 
-  console.info("[/api/chat]", {
+  logApiEvent("/api/chat", "info", {
+    activity: ACTIVITY,
     event: "request",
     requestId,
     mode: hasLiveModel ? "azure" : "fallback",
@@ -251,7 +277,8 @@ export async function POST(req: Request): Promise<Response> {
       },
     );
   } catch (error) {
-    console.error("[/api/chat]", {
+    logApiEvent("/api/chat", "error", {
+      activity: ACTIVITY,
       event: "provider-init-error",
       requestId,
       errorType: errorType(error),
