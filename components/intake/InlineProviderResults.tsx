@@ -86,7 +86,7 @@ export function InlineProviderResults({
         <p className="mt-2 text-sm text-ink-muted">{subParts.join(" · ")}</p>
       </header>
 
-      {result.bottleneck.kind !== "none" && result.bottleneck.message && (
+      {result.tradeoff.kind !== "none" && result.tradeoff.message && (
         <div className="rounded-3xl border border-hairline-strong bg-mint-soft/70 p-5">
           <div className="flex items-start gap-3">
             <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface text-forest">
@@ -95,7 +95,7 @@ export function InlineProviderResults({
             <div>
               <p className="font-medium text-ink">One honest note</p>
               <p className="mt-1 text-[0.95rem] leading-relaxed text-ink-muted">
-                {result.bottleneck.message}
+                {result.tradeoff.message}
               </p>
             </div>
           </div>
