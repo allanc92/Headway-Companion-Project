@@ -206,19 +206,32 @@ conversation text reaches the deployed server and may reach Azure OpenAI in live
 mode. Infrastructure logging, retention, residency, consent, and deletion
 requirements would need explicit review before any production use.
 
-### Chat stream diagnostics
+### AI activity diagnostics
 
-Each `POST /api/chat` response includes an internal `x-request-id` header and
-an NDJSON stream of `delta`, `done`, or `error` events. A response is successful
-only after its `done` event arrives. If the connection ends early, the interface
-keeps any partial response but does not expose implementation details to the
-participant.
+Chat responses, summary creation and refinement, and therapist matching emit
+one-line lifecycle logs with a correlation ID. The activity names are
+`companion-response`, `summary-creation`, `summary-refinement`, and
+`therapist-matching`; each records a `request` event followed by `done` or an
+explicit error/fallback event. Chat also records `first-output`, making a request
+that never produced visible text distinguishable from an interrupted partial
+response.
 
-For diagnosis, use the approximate time of the interruption and inspect the
-local terminal or the Vercel project's **Logs** view. Application chat logs
-contain diagnostic metadata such as request ID, lifecycle event, mode, message
-count, finish reason, error type, and elapsed time; they do not contain prompt
-or response text.
+Each route returns an internal `x-request-id` header. Chat additionally sends an
+NDJSON stream of `delta`, `done`, or `error` events and is successful only after
+its `done` event arrives. A Vercel timeout appears as a `request` with no
+application terminal event followed by the platform runtime-timeout log.
+
+For diagnosis, use the approximate time of the activity and inspect the local
+terminal or the Vercel project's **Logs** view:
+
+```bash
+vercel logs --project headway-companion-project --environment production --since 30m --no-branch --expand
+```
+
+Logs contain only operational metadata such as request ID, lifecycle event,
+mode, input/output counts, fallback reason, error type, and elapsed time. They do
+not contain conversation text, generated summaries, ZIP codes, insurance,
+provider names, or match explanations.
 
 ## Run locally
 
