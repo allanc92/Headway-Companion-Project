@@ -86,7 +86,7 @@ export function realtimeClientSecretsUrl(config: RealtimeConfig): string {
 }
 
 export function realtimeCallsUrl(config: RealtimeConfig): string {
-  return `${config.endpoint}/openai/v1/realtime/calls?webrtcfilter=on`;
+  return `${config.endpoint}/openai/v1/realtime/calls`;
 }
 
 export function buildRealtimeSessionConfig(config: RealtimeConfig) {
