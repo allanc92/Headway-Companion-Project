@@ -1,0 +1,82 @@
+{
+  "name": "voice-readiness-classifier",
+  "version": 1,
+  "description": "Baseline transcript cases for deciding whether spoken summary consent should confirm, continue, or leave the conversation unchanged.",
+  "decisionSemantics": {
+    "confirm": "Proceed to summary synthesis.",
+    "continue": "Keep the companion conversation active.",
+    "null": "Do not transition; let Huey answer the question or continue naturally."
+  },
+  "cases": [
+    {
+      "id": "confirm-natural-summary-readiness",
+      "input": "Yeah, I'm ready for a simple summary.",
+      "expected": "confirm"
+    },
+    {
+      "id": "confirm-ready-to-book",
+      "input": "I'm ready to book.",
+      "expected": "confirm"
+    },
+    {
+      "id": "confirm-shared-enough",
+      "input": "I feel better now; I think I've shared what I needed to.",
+      "expected": "confirm"
+    },
+    {
+      "id": "confirm-put-together-summary",
+      "input": "Let's put together the summary.",
+      "expected": "confirm"
+    },
+    {
+      "id": "confirm-go-ahead",
+      "input": "Go ahead.",
+      "expected": "confirm"
+    },
+    {
+      "id": "continue-not-yet-more-to-say",
+      "input": "Not yet, I have more to say.",
+      "expected": "continue"
+    },
+    {
+      "id": "continue-not-ready",
+      "input": "I'm not ready.",
+      "expected": "continue"
+    },
+    {
+      "id": "continue-talk-more",
+      "input": "I'd like to talk a little more.",
+      "expected": "continue"
+    },
+    {
+      "id": "continue-unsure",
+      "input": "I don't know if I'm ready.",
+      "expected": "continue"
+    },
+    {
+      "id": "continue-past-readiness-negated",
+      "input": "We were ready yesterday, but not now.",
+      "expected": "continue"
+    },
+    {
+      "id": "neutral-what-happens-after-summary",
+      "input": "What happens after the summary?",
+      "expected": null
+    },
+    {
+      "id": "neutral-how-to-find-matches",
+      "input": "How do I find my matches?",
+      "expected": null
+    },
+    {
+      "id": "neutral-purpose-question",
+      "input": "But what is the purpose of it?",
+      "expected": null
+    },
+    {
+      "id": "neutral-booking-question",
+      "input": "Can you help me book?",
+      "expected": null
+    }
+  ]
+}

@@ -1,8 +1,9 @@
 import "server-only";
 
-import { SUMMARY_READINESS_PROMPT } from "@/lib/copy";
-import { COMPANION_SYSTEM } from "@/lib/prompts";
-import { MIRROR_READY_MARKER } from "@/lib/types";
+import {
+  COMPANION_SYSTEM,
+  COMPANION_VOICE_SESSION,
+} from "@/lib/prompts";
 
 const DEFAULT_VOICE = "marin";
 
@@ -89,15 +90,11 @@ export function realtimeCallsUrl(config: RealtimeConfig): string {
 }
 
 export function buildRealtimeSessionConfig(config: RealtimeConfig) {
-  const voiceInstructions = `VOICE SESSION DELIVERY
-This is a continuous spoken conversation. Respond naturally for speech, leave room for pauses, and never describe controls or technical behavior.
-The visible transcript comes from exactly what you say. For this voice session only, do not speak, spell, or output the hidden token ${MIRROR_READY_MARKER}; this instruction supersedes the token-output instruction above. When the person is ready, say exactly this consent check and nothing else: ${SUMMARY_READINESS_PROMPT}`;
-
   return {
     session: {
       type: "realtime",
       model: config.deployment,
-      instructions: `${COMPANION_SYSTEM}\n\n${voiceInstructions}`,
+      instructions: `${COMPANION_SYSTEM}\n\n${COMPANION_VOICE_SESSION}`,
       output_modalities: ["audio"],
       audio: {
         input: {

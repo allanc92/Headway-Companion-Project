@@ -161,6 +161,25 @@ const VOICE_READINESS_DECLINES = new Set([
   "i would like to keep talking",
 ]);
 
+const VOICE_READINESS_CONTINUE_PATTERNS = [
+  /\bnot yet\b/,
+  /\bnot (?:right )?now\b/,
+  /\b(?:not|dont|do not)\s+(?:quite\s+|really\s+)?ready\b/,
+  /\b(?:not sure|unsure|dont know|do not know)\b.*\bready\b/,
+  /\b(?:keep|continue)\s+(?:on\s+)?talking\b/,
+  /\b(?:want|would like|id like)\s+to\s+(?:keep|continue)\s+talking\b/,
+  /\b(?:more|something else)\s+to\s+(?:say|share|add|talk about)\b/,
+  /\b(?:want|need|would like|id like)\s+to\s+(?:say|share|add|talk)\s+(?:a little\s+)?more\b/,
+] as const;
+
+const VOICE_READINESS_CONFIRM_PATTERNS = [
+  /\b(?:i am|im)\s+(?:(?:really|definitely|totally)\s+)?ready\b/,
+  /\b(?:go ahead|move on|move forward|take the next step)\b/,
+  /\blets\s+(?:do it|(?:see|make|create|put together)\s+(?:(?:the|my|a)\s+)?summary)\b/,
+  /\b(?:show|give)\s+me\s+(?:(?:the|my|a)\s+)?summary\b/,
+  /\b(?:i have|ive)\s+shared\s+(?:what i needed|everything i (?:wanted|needed) to)\b/,
+] as const;
+
 export function classifyVoiceReadinessResponse(
   text: string,
 ): VoiceReadinessDecision | null {
@@ -172,8 +191,22 @@ export function classifyVoiceReadinessResponse(
     .replace(/\s+/g, " ")
     .trim();
 
-  if (VOICE_READINESS_CONFIRMATIONS.has(normalized)) return "confirm";
   if (VOICE_READINESS_DECLINES.has(normalized)) return "continue";
+  if (
+    VOICE_READINESS_CONTINUE_PATTERNS.some((pattern) =>
+      pattern.test(normalized),
+    )
+  ) {
+    return "continue";
+  }
+  if (VOICE_READINESS_CONFIRMATIONS.has(normalized)) return "confirm";
+  if (
+    VOICE_READINESS_CONFIRM_PATTERNS.some((pattern) =>
+      pattern.test(normalized),
+    )
+  ) {
+    return "confirm";
+  }
   return null;
 }
 
@@ -200,6 +233,10 @@ interface StreamOptions {
 
 interface MessageOptions {
   excludeFromSynthesis?: boolean;
+}
+
+interface VoiceAssistantTurnOptions extends MessageOptions {
+  trackReadiness?: boolean;
 }
 
 interface SendOptions extends MessageOptions {
@@ -480,16 +517,24 @@ export function useCompanionChat() {
     [addUserMessage],
   );
 
-  const beginVoiceAssistantTurn = useCallback(() => {
-    const id = genId();
-    voiceRawTextRef.current.set(id, "");
-    commit((prev) => [
-      ...prev,
-      { id, role: "assistant", text: "" },
-    ]);
-    setStatus({ type: "streaming" });
-    return id;
-  }, [commit]);
+  const beginVoiceAssistantTurn = useCallback(
+    (options: MessageOptions = {}) => {
+      const id = genId();
+      voiceRawTextRef.current.set(id, "");
+      commit((prev) => [
+        ...prev,
+        {
+          id,
+          role: "assistant",
+          text: "",
+          excludeFromSynthesis: options.excludeFromSynthesis,
+        },
+      ]);
+      setStatus({ type: "streaming" });
+      return id;
+    },
+    [commit],
+  );
 
   const appendVoiceAssistantDelta = useCallback(
     (id: string, delta: string) => {
@@ -506,14 +551,20 @@ export function useCompanionChat() {
   );
 
   const finalizeVoiceAssistantTurn = useCallback(
-    (id: string, finalTranscript: string) => {
+    (
+      id: string,
+      finalTranscript: string,
+      options: VoiceAssistantTurnOptions = {},
+    ) => {
       const accumulated = voiceRawTextRef.current.get(id) ?? "";
       const raw = finalTranscript.trim() ? finalTranscript : accumulated;
       voiceRawTextRef.current.delete(id);
       const result = extractVoiceReadiness(raw);
       const isReady =
-        result.ready ||
-        mirrorSafetyNet(readinessUserTexts(messagesRef.current));
+        options.trackReadiness !== false &&
+        (result.ready ||
+          mirrorSafetyNet(readinessUserTexts(messagesRef.current)));
+      let becameReady = false;
 
       if (!result.text.trim()) {
         commit((prev) => prev.filter((message) => message.id !== id));
@@ -530,6 +581,7 @@ export function useCompanionChat() {
           ),
         );
         setReady(true);
+        becameReady = true;
       } else {
         commit((prev) =>
           prev.map((message) =>
@@ -540,6 +592,7 @@ export function useCompanionChat() {
         );
       }
       setStatus({ type: "idle" });
+      return becameReady;
     },
     [commit],
   );

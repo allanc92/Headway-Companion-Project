@@ -3,17 +3,19 @@ export type VoiceTransportEvent =
   | {
       type: "assistant-delta";
       itemId: string | null;
+      responseId: string | null;
       text: string;
     }
   | {
       type: "assistant-done";
       itemId: string | null;
+      responseId: string | null;
       text: string;
     }
   | { type: "user-speech-started" }
   | { type: "user-speech-stopped" }
-  | { type: "assistant-audio-started" }
-  | { type: "assistant-audio-stopped" }
+  | { type: "assistant-audio-started"; responseId: string | null }
+  | { type: "assistant-audio-stopped"; responseId: string | null }
   | { type: "transport-error" };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -54,6 +56,7 @@ export function parseRealtimeServerEvent(
         ? {
             type: "assistant-delta",
             itemId: optionalString(value, "item_id"),
+            responseId: optionalString(value, "response_id"),
             text,
           }
         : null;
@@ -63,6 +66,7 @@ export function parseRealtimeServerEvent(
       return {
         type: "assistant-done",
         itemId: optionalString(value, "item_id"),
+        responseId: optionalString(value, "response_id"),
         text: optionalString(value, "transcript") ??
           optionalString(value, "text") ??
           "",
@@ -72,9 +76,15 @@ export function parseRealtimeServerEvent(
     case "input_audio_buffer.speech_stopped":
       return { type: "user-speech-stopped" };
     case "output_audio_buffer.started":
-      return { type: "assistant-audio-started" };
+      return {
+        type: "assistant-audio-started",
+        responseId: optionalString(value, "response_id"),
+      };
     case "output_audio_buffer.stopped":
-      return { type: "assistant-audio-stopped" };
+      return {
+        type: "assistant-audio-stopped",
+        responseId: optionalString(value, "response_id"),
+      };
     case "conversation.item.input_audio_transcription.failed":
     case "error":
       return { type: "transport-error" };

@@ -59,9 +59,6 @@ export function Conversation({
   const waitingForReply = streaming && last?.role === "assistant" && last.text === "";
 
   const visibleMessages = waitingForReply ? messages.slice(0, -1) : messages;
-  const caption =
-    [...visibleMessages].reverse().find((message) => message.text.trim())?.text ??
-    "";
   // Pristine opening (no user turns yet, composer active): center the greeting,
   // chips and composer as one calm focal group rather than stranding the first
   // message at the top of a tall viewport. Flips to the growing transcript once
@@ -148,7 +145,6 @@ export function Conversation({
           <VoiceControls
             status={voiceStatus}
             micLevel={voiceMicLevel}
-            caption={caption}
             fallbackMessage={voiceFallbackMessage}
             disabled={voiceDisabled}
             onStart={onVoiceStart}
