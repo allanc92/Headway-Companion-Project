@@ -17,11 +17,16 @@ import {
   WelcomeBackBlock,
 } from "./ThreadBlocks";
 import { InlineProviderResults } from "./InlineProviderResults";
-import { useCompanionChat } from "./useCompanionChat";
+import {
+  classifyVoiceReadinessResponse,
+  useCompanionChat,
+} from "./useCompanionChat";
+import { useVoiceSession } from "./useVoiceSession";
 import { PROVIDERS } from "@/lib/providers";
 import {
   SUMMARY_CONFIRMATION_RESPONSE,
   SUMMARY_CONTINUE_RESPONSE,
+  VOICE_COPY,
 } from "@/lib/copy";
 import {
   loadIntention,
@@ -50,9 +55,18 @@ type IntakeStage =
   | "booking"
   | "intention";
 
+interface PendingVoiceSummaryHandoff {
+  transcript: ChatMessage[];
+  turnId: string | null;
+  assistantDone: boolean;
+  playbackDone: boolean;
+}
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const READINESS_PROMPT_DELAY_MS = 1100;
+const VOICE_FEATURE_ENABLED =
+  process.env.NEXT_PUBLIC_VOICE_ENABLED === "true";
 
 export function IntakeExperience({ context }: { context: IntakeContext }) {
   const router = useRouter();
@@ -83,6 +97,9 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
 
   const readinessDecisionRef = useRef(false);
   const synthesizingRef = useRef(false);
+  const voiceAssistantTurnsRef = useRef(new Map<string, string>());
+  const pendingVoiceSummaryHandoffRef =
+    useRef<PendingVoiceSummaryHandoff | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -130,7 +147,102 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
     }
   }
 
+  const voice = useVoiceSession({
+    getConversation: () => chat.messages,
+    onUserTranscript: (text) => {
+      if (stage === "confirming") {
+        const decision = classifyVoiceReadinessResponse(text);
+        if (decision === "confirm") {
+          return beginVoiceSummaryHandoff(text);
+        }
+        if (decision === "continue") {
+          continueConversation(text);
+          return;
+        }
+        readinessDecisionRef.current = true;
+        setStage("conversation");
+      }
+      chat.commitVoiceUserTurn(text);
+      void runSafety(text);
+    },
+    onAssistantDelta: (turnId, text) => {
+      const handoff = pendingVoiceSummaryHandoffRef.current;
+      const isHandoffTurn =
+        handoff !== null &&
+        (handoff.turnId === null || handoff.turnId === turnId);
+      if (handoff && handoff.turnId === null) {
+        handoff.turnId = turnId;
+      }
+      let messageId = voiceAssistantTurnsRef.current.get(turnId);
+      if (!messageId) {
+        messageId = chat.beginVoiceAssistantTurn({
+          excludeFromSynthesis: isHandoffTurn,
+        });
+        voiceAssistantTurnsRef.current.set(turnId, messageId);
+      }
+      chat.appendVoiceAssistantDelta(messageId, text);
+    },
+    onAssistantDone: (turnId, text) => {
+      const handoff = pendingVoiceSummaryHandoffRef.current;
+      const isHandoffTurn =
+        handoff !== null &&
+        (handoff.turnId === null || handoff.turnId === turnId);
+      if (handoff && handoff.turnId === null) {
+        handoff.turnId = turnId;
+      }
+      let messageId = voiceAssistantTurnsRef.current.get(turnId);
+      if (!messageId) {
+        messageId = chat.beginVoiceAssistantTurn({
+          excludeFromSynthesis: isHandoffTurn,
+        });
+      }
+      const becameReady = chat.finalizeVoiceAssistantTurn(messageId, text, {
+        trackReadiness: !isHandoffTurn,
+      });
+      voiceAssistantTurnsRef.current.delete(turnId);
+      if (handoff && isHandoffTurn) {
+        handoff.assistantDone = true;
+        maybeCompleteVoiceSummaryHandoff();
+        return;
+      }
+      if (becameReady) {
+        readinessDecisionRef.current = false;
+        setStage("confirming");
+      }
+    },
+    onAssistantPlaybackDone: (turnId) => {
+      const handoff = pendingVoiceSummaryHandoffRef.current;
+      if (!handoff || handoff.turnId !== turnId) return;
+      handoff.playbackDone = true;
+      maybeCompleteVoiceSummaryHandoff();
+    },
+    onAssistantInterrupted: (turnId) => {
+      const messageId = voiceAssistantTurnsRef.current.get(turnId);
+      if (messageId) chat.interruptVoiceAssistantTurn(messageId);
+      voiceAssistantTurnsRef.current.delete(turnId);
+      const handoff = pendingVoiceSummaryHandoffRef.current;
+      if (handoff?.turnId === turnId) {
+        handoff.assistantDone = true;
+        handoff.playbackDone = true;
+        maybeCompleteVoiceSummaryHandoff();
+      }
+    },
+  });
+
+  const { active: voiceActive, stop: stopVoice } = voice;
+
+  useEffect(() => {
+    if (
+      voiceActive &&
+      stage !== "conversation" &&
+      stage !== "confirming"
+    ) {
+      stopVoice();
+    }
+  }, [stage, voiceActive, stopVoice]);
+
   function handleSend(text: string) {
+    if (voice.active) return;
     if (stage === "confirming") {
       if (readinessDecisionRef.current) return;
       readinessDecisionRef.current = true;
@@ -202,6 +314,53 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
     }
   }
 
+  function beginVoiceSummaryHandoff(
+    text: string,
+  ): "stop-listening" | undefined {
+    if (
+      stage !== "confirming" ||
+      readinessDecisionRef.current ||
+      synthesizingRef.current
+    ) {
+      return;
+    }
+
+    readinessDecisionRef.current = true;
+    pendingVoiceSummaryHandoffRef.current = {
+      transcript: chat.commitVoiceUserTurn(text, {
+        excludeFromSynthesis: true,
+      }),
+      turnId: null,
+      assistantDone: false,
+      playbackDone: false,
+    };
+    return "stop-listening";
+  }
+
+  function maybeCompleteVoiceSummaryHandoff() {
+    const handoff = pendingVoiceSummaryHandoffRef.current;
+    if (!handoff?.assistantDone || !handoff.playbackDone) return;
+
+    completeVoiceSummaryHandoff(handoff);
+  }
+
+  function completeVoiceSummaryHandoff(
+    handoff: PendingVoiceSummaryHandoff,
+  ) {
+    pendingVoiceSummaryHandoffRef.current = null;
+    voice.stop();
+    void goToMirror(handoff.transcript);
+  }
+
+  function handleVoiceEnd() {
+    const handoff = pendingVoiceSummaryHandoffRef.current;
+    if (handoff) {
+      completeVoiceSummaryHandoff(handoff);
+      return;
+    }
+    voice.stop();
+  }
+
   function confirmSummary() {
     if (
       stage !== "confirming" ||
@@ -210,6 +369,7 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
     ) {
       return;
     }
+    if (voice.active) voice.stop();
     readinessDecisionRef.current = true;
     const transcript = chat.addUserMessage(SUMMARY_CONFIRMATION_RESPONSE, {
       excludeFromSynthesis: true,
@@ -217,10 +377,23 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
     void goToMirror(transcript);
   }
 
-  function continueConversation() {
-    if (stage !== "confirming" || readinessDecisionRef.current) return;
+  function continueConversation(voiceTranscript?: string) {
+    const isVoiceResponse = voiceTranscript !== undefined;
+    if (
+      stage !== "confirming" ||
+      readinessDecisionRef.current ||
+      (voice.active && !isVoiceResponse)
+    ) {
+      return;
+    }
     readinessDecisionRef.current = true;
     setStage("conversation");
+    if (isVoiceResponse) {
+      chat.commitVoiceUserTurn(voiceTranscript, {
+        excludeFromSynthesis: true,
+      });
+      return;
+    }
     void chat.send(SUMMARY_CONTINUE_RESPONSE, {
       trackReadiness: false,
       excludeFromSynthesis: true,
@@ -285,7 +458,7 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
 
   useEffect(() => {
     if (stage !== "conversation") return;
-    if (!summaryReady || readinessStatus !== "idle") return;
+    if (!summaryReady || readinessStatus.type !== "idle") return;
     if (helpOpen) return;
     // Hold the transition until every outstanding safety check settles, so
     // overlapping classifications cannot clear the gate out of order.
@@ -403,9 +576,12 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
       stage !== "confirming" &&
       stage !== "understanding") ||
     resumed ||
-    refining;
+    refining ||
+    voice.active;
   const composerPlaceholder =
-    stage === "confirming"
+    voice.active
+      ? VOICE_COPY.activePlaceholder
+      : stage === "confirming"
       ? "Add anything else, or choose when you’re ready…"
       : stage === "understanding"
       ? refining
@@ -420,6 +596,7 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
     booking ? `booking-${booking.date}-${booking.time}` : "no-booking",
     resumed ? "resumed" : "fresh",
     refining ? "refining" : "not-refining",
+    voice.status,
   ].join(":");
 
   const afterMessages = (
@@ -433,10 +610,10 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
 
       {resumed && <WelcomeBackBlock />}
 
-      {stage === "confirming" && (
+      {stage === "confirming" && !voice.active && (
         <SummaryReadinessActions
           onConfirm={confirmSummary}
-          onContinue={continueConversation}
+          onContinue={() => continueConversation()}
         />
       )}
 
@@ -499,6 +676,16 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
           progressKey={progressKey}
           composerDisabled={composerDisabled}
           composerPlaceholder={composerPlaceholder}
+          voiceEnabled={
+            VOICE_FEATURE_ENABLED &&
+            (stage === "conversation" || stage === "confirming")
+          }
+          voiceStatus={voice.status}
+          voiceMicLevel={voice.micLevel}
+          voiceFallbackMessage={voice.fallbackMessage}
+          voiceDisabled={chat.status.type === "streaming"}
+          onVoiceStart={voice.start}
+          onVoiceEnd={handleVoiceEnd}
         />
       </main>
 

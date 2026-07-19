@@ -13,7 +13,15 @@ improvement.
 
 ## Unreleased
 
-No customer-facing changes are currently recorded.
+- Added an opt-in, always-listening conversation mode using direct Azure
+  Realtime WebRTC, server voice activity detection, interruption, and live
+  captions in the same transcript as text chat. Typing remains unavailable
+  until the call ends, and bounded connection recovery falls back quietly to
+  text.
+- Kept raw voice media out of the application server and storage: a short-lived
+  client secret is minted server-side, the resource key remains private, and
+  browser audio tracks are released at call end. Voice remains off by default
+  and retains the prototype’s existing non-clinical safety and readiness gates.
 
 ## Initial prototype - 2026-07-17
 

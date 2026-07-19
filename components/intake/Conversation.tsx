@@ -5,8 +5,10 @@ import { MessageBubble } from "./MessageBubble";
 import { ThinkingShimmer } from "./ThinkingShimmer";
 import { SparkChips } from "./SparkChips";
 import { Composer } from "./Composer";
+import { VoiceControls } from "./VoiceControls";
 import type { ChatMessage } from "@/lib/types";
 import type { ChatStatus } from "./useCompanionChat";
+import type { VoiceStatus } from "./useVoiceSession";
 import type { ReactNode } from "react";
 
 const BOTTOM_STICK_THRESHOLD_PX = 120;
@@ -30,6 +32,13 @@ export function Conversation({
   progressKey,
   composerDisabled = false,
   composerPlaceholder,
+  voiceEnabled = false,
+  voiceStatus = "idle",
+  voiceMicLevel = 0,
+  voiceFallbackMessage = null,
+  voiceDisabled = false,
+  onVoiceStart,
+  onVoiceEnd,
 }: {
   messages: ChatMessage[];
   status: ChatStatus;
@@ -39,11 +48,18 @@ export function Conversation({
   progressKey?: string;
   composerDisabled?: boolean;
   composerPlaceholder?: string;
+  voiceEnabled?: boolean;
+  voiceStatus?: VoiceStatus;
+  voiceMicLevel?: number;
+  voiceFallbackMessage?: string | null;
+  voiceDisabled?: boolean;
+  onVoiceStart?: () => void;
+  onVoiceEnd?: () => void;
 }) {
   const endRef = useRef<HTMLDivElement>(null);
   const shouldStickToBottomRef = useRef(true);
   const scrollFrameRef = useRef<number | null>(null);
-  const streaming = status === "streaming";
+  const streaming = status.type === "streaming";
   const last = messages[messages.length - 1];
   const waitingForReply = streaming && last?.role === "assistant" && last.text === "";
   const thinkingLabel =
@@ -133,6 +149,18 @@ export function Conversation({
         }
       >
         {showChips && <SparkChips onPick={onSend} disabled={streaming} />}
+
+        {voiceEnabled && onVoiceStart && onVoiceEnd && (
+          <VoiceControls
+            status={voiceStatus}
+            micLevel={voiceMicLevel}
+            fallbackMessage={voiceFallbackMessage}
+            disabled={voiceDisabled}
+            onStart={onVoiceStart}
+            onEnd={onVoiceEnd}
+          />
+        )}
+
         <Composer
           onSend={onSend}
           disabled={streaming || composerDisabled}

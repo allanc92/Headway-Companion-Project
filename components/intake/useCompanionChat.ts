@@ -8,18 +8,95 @@ import type { ChatMessage, SafetyTier } from "@/lib/types";
 
 let counter = 0;
 const genId = () => `m${++counter}-${Date.now()}`;
+const genRequestId = () =>
+  typeof globalThis.crypto?.randomUUID === "function"
+    ? globalThis.crypto.randomUUID()
+    : genId();
 
 /** Fixed id for the assistant's opening greeting bubble. */
 const OPENING_ID = "opening";
 
-export type ChatStatus = "idle" | "streaming";
+export type ChatStatus =
+  | { type: "idle" }
+  | { type: "streaming" };
+
+type ChatStreamEvent =
+  | { type: "delta"; text: string }
+  | {
+      type: "done";
+      requestId: string;
+      finishReason: string;
+      usage: unknown;
+      elapsedMs: number;
+    }
+  | { type: "error"; requestId: string; message: string };
+
+class StreamInterruption extends Error {
+  constructor(
+    readonly requestId: string,
+    readonly displayMessage: string,
+  ) {
+    super(displayMessage);
+    this.name = "StreamInterruption";
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseStreamEvent(line: string): ChatStreamEvent {
+  let value: unknown;
+  try {
+    value = JSON.parse(line);
+  } catch {
+    throw new Error("Invalid chat stream JSON");
+  }
+
+  if (!isRecord(value)) throw new Error("Invalid chat stream event");
+
+  if (value.type === "delta" && typeof value.text === "string") {
+    return { type: "delta", text: value.text };
+  }
+  if (
+    value.type === "done" &&
+    typeof value.requestId === "string" &&
+    typeof value.finishReason === "string" &&
+    typeof value.elapsedMs === "number" &&
+    "usage" in value
+  ) {
+    return {
+      type: "done",
+      requestId: value.requestId,
+      finishReason: value.finishReason,
+      usage: value.usage,
+      elapsedMs: value.elapsedMs,
+    };
+  }
+  if (
+    value.type === "error" &&
+    typeof value.requestId === "string" &&
+    typeof value.message === "string"
+  ) {
+    return {
+      type: "error",
+      requestId: value.requestId,
+      message: value.message,
+    };
+  }
+
+  throw new Error("Invalid chat stream event");
+}
 
 /**
  * Strip the readiness marker (and any partial trailing fragment of it that is
  * still mid-stream) from text meant for display, so the sentinel never flashes
  * on screen. Returns the clean text and whether the full marker was present.
  */
-function extractReadiness(raw: string): { text: string; ready: boolean } {
+export function extractReadiness(raw: string): {
+  text: string;
+  ready: boolean;
+} {
   if (raw.includes(MIRROR_READY_MARKER)) {
     const text = raw.split(MIRROR_READY_MARKER).join("").trimEnd();
     return { text, ready: true };
@@ -32,6 +109,117 @@ function extractReadiness(raw: string): { text: string; ready: boolean } {
     }
   }
   return { text: raw, ready: false };
+}
+
+function extractVoiceReadiness(raw: string): {
+  text: string;
+  ready: boolean;
+} {
+  const result = extractReadiness(raw);
+  const normalize = (text: string) =>
+    text.trim().replace(/\s+/g, " ").toLocaleLowerCase();
+  return {
+    text: result.text,
+    ready:
+      result.ready ||
+      normalize(result.text) === normalize(SUMMARY_READINESS_PROMPT),
+  };
+}
+
+export type VoiceReadinessDecision = "confirm" | "continue";
+
+const VOICE_READINESS_CONFIRMATIONS = new Set([
+  "yes",
+  "yes please",
+  "yeah",
+  "yep",
+  "i am ready",
+  "im ready",
+  "yes i am ready",
+  "im ready for my summary",
+  "i am ready for my summary",
+  "im ready to see my summary",
+  "i am ready to see my summary",
+  "lets see my summary",
+  "lets see the summary",
+  "lets do it",
+]);
+
+const VOICE_READINESS_DECLINES = new Set([
+  "no",
+  "no thanks",
+  "no thank you",
+  "nope",
+  "not yet",
+  "no not yet",
+  "i am not ready",
+  "im not ready",
+  "keep talking",
+  "lets keep talking",
+  "i want to keep talking",
+  "id like to keep talking",
+  "i would like to keep talking",
+]);
+
+const VOICE_READINESS_CONTINUE_PATTERNS = [
+  /\bnot yet\b/,
+  /\bnot (?:right )?now\b/,
+  /\b(?:not|dont|do not)\s+(?:quite\s+|really\s+)?ready\b/,
+  /\b(?:not sure|unsure|dont know|do not know)\b.*\bready\b/,
+  /\b(?:keep|continue)\s+(?:on\s+)?talking\b/,
+  /\b(?:want|would like|id like)\s+to\s+(?:keep|continue)\s+talking\b/,
+  /\b(?:more|something else)\s+to\s+(?:say|share|add|talk about)\b/,
+  /\b(?:want|need|would like|id like)\s+to\s+(?:say|share|add|talk)\s+(?:a little\s+)?more\b/,
+] as const;
+
+const VOICE_READINESS_CONFIRM_PATTERNS = [
+  /\b(?:i am|im)\s+(?:(?:really|definitely|totally)\s+)?ready\b/,
+  /\b(?:go ahead|move on|move forward|take the next step)\b/,
+  /\blets\s+(?:do it|(?:see|make|create|put together)\s+(?:(?:the|my|a)\s+)?summary)\b/,
+  /\b(?:show|give)\s+me\s+(?:(?:the|my|a)\s+)?summary\b/,
+  /\b(?:i have|ive)\s+shared\s+(?:what i needed|everything i (?:wanted|needed) to)\b/,
+] as const;
+
+export function classifyVoiceReadinessResponse(
+  text: string,
+): VoiceReadinessDecision | null {
+  const normalized = text
+    .trim()
+    .toLowerCase()
+    .replace(/[’']/g, "")
+    .replace(/[.,!?;:]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (VOICE_READINESS_DECLINES.has(normalized)) return "continue";
+  if (
+    VOICE_READINESS_CONTINUE_PATTERNS.some((pattern) =>
+      pattern.test(normalized),
+    )
+  ) {
+    return "continue";
+  }
+  if (VOICE_READINESS_CONFIRMATIONS.has(normalized)) return "confirm";
+  if (
+    VOICE_READINESS_CONFIRM_PATTERNS.some((pattern) =>
+      pattern.test(normalized),
+    )
+  ) {
+    return "confirm";
+  }
+  return null;
+}
+
+function readinessUserTexts(messages: ChatMessage[]): string[] {
+  const readinessWindowStart = messages.reduce(
+    (start, message, index) =>
+      message.excludeFromSynthesis ? index + 1 : start,
+    0,
+  );
+  return messages
+    .slice(readinessWindowStart)
+    .filter((message) => message.role === "user" && !message.excludeFromSynthesis)
+    .map((message) => message.text);
 }
 
 interface StreamOptions {
@@ -47,6 +235,10 @@ interface MessageOptions {
   excludeFromSynthesis?: boolean;
 }
 
+interface VoiceAssistantTurnOptions extends MessageOptions {
+  trackReadiness?: boolean;
+}
+
 interface SendOptions extends MessageOptions {
   trackReadiness?: boolean;
 }
@@ -60,19 +252,18 @@ export function useCompanionChat() {
     text: "",
   };
   const [messages, setMessages] = useState<ChatMessage[]>([openingMessage]);
-  const [status, setStatus] = useState<ChatStatus>("streaming");
+  const [status, setStatus] = useState<ChatStatus>({ type: "streaming" });
   const [ready, setReady] = useState(false);
   const messagesRef = useRef<ChatMessage[]>([openingMessage]);
   const busyRef = useRef(false);
   const didGreetRef = useRef(false);
+  const voiceRawTextRef = useRef(new Map<string, string>());
 
   const commit = useCallback(
     (updater: (prev: ChatMessage[]) => ChatMessage[]) => {
-      setMessages((prev) => {
-        const next = updater(prev);
-        messagesRef.current = next;
-        return next;
-      });
+      const next = updater(messagesRef.current);
+      messagesRef.current = next;
+      setMessages(next);
     },
     [],
   );
@@ -81,33 +272,96 @@ export function useCompanionChat() {
   // reads the token stream into the target assistant bubble, hides the readiness
   // marker, and degrades gracefully on empty/failed responses.
   const runStream = useCallback(
-    async (assistantId: string, body: unknown, opts: StreamOptions) => {
-      setStatus("streaming");
+    async function consumeStream(
+      assistantId: string,
+      body: unknown,
+      opts: StreamOptions,
+    ) {
+      if (busyRef.current) return;
+
+      const requestId = genRequestId();
+      let diagnosticId = requestId;
+      let acc = "";
+      let sawReady = false;
+
+      setStatus({ type: "streaming" });
       busyRef.current = true;
       setReady(false);
 
       try {
         const res = await fetch("/api/chat", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "x-request-id": requestId,
+          },
           body: JSON.stringify(body),
         });
-        if (!res.body) throw new Error("No response body");
+        diagnosticId = res.headers.get("x-request-id") || requestId;
+        if (!res.ok) {
+          throw new StreamInterruption(
+            diagnosticId,
+            "The response could not be completed.",
+          );
+        }
+        if (!res.body) {
+          throw new StreamInterruption(
+            diagnosticId,
+            "The response ended before it began.",
+          );
+        }
 
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
-        let acc = "";
-        let sawReady = false;
+        let buffer = "";
+        let completed = false;
+
+        const processLine = (line: string) => {
+          if (!line.trim()) return;
+          if (completed) throw new Error("Event received after done");
+
+          const event = parseStreamEvent(line);
+          if (event.type === "delta") {
+            acc += event.text;
+            const { text, ready: isReady } = extractReadiness(acc);
+            if (isReady) sawReady = true;
+            commit((prev) =>
+              prev.map((message) =>
+                message.id === assistantId ? { ...message, text } : message,
+              ),
+            );
+            return;
+          }
+
+          if (event.requestId !== diagnosticId) {
+            throw new Error("Chat stream request ID mismatch");
+          }
+          if (event.type === "error") {
+            throw new StreamInterruption(event.requestId, event.message);
+          }
+          completed = true;
+        };
+
         for (;;) {
           const { value, done } = await reader.read();
           if (done) break;
-          acc += decoder.decode(value, { stream: true });
-          const { text, ready: isReady } = extractReadiness(acc);
-          if (isReady) sawReady = true;
-          commit((prev) =>
-            prev.map((m) => (m.id === assistantId ? { ...m, text } : m)),
+          buffer += decoder.decode(value, { stream: true });
+          let newline = buffer.indexOf("\n");
+          while (newline >= 0) {
+            processLine(buffer.slice(0, newline));
+            buffer = buffer.slice(newline + 1);
+            newline = buffer.indexOf("\n");
+          }
+        }
+        buffer += decoder.decode();
+        if (buffer.trim()) processLine(buffer);
+        if (!completed) {
+          throw new StreamInterruption(
+            diagnosticId,
+            "The response ended before it finished.",
           );
         }
+
         const { text: finalText, ready: finalReady } = extractReadiness(acc);
         if (!finalText.trim()) {
           commit((prev) =>
@@ -123,15 +377,7 @@ export function useCompanionChat() {
           // A declined offer starts a fresh safety-net window. The model can still
           // offer sooner, but the fallback counter cannot immediately override the
           // person's choice to keep talking.
-          const readinessWindowStart = messagesRef.current.reduce(
-            (start, message, index) =>
-              message.excludeFromSynthesis ? index + 1 : start,
-            0,
-          );
-          const userTexts = messagesRef.current
-            .slice(readinessWindowStart)
-            .filter((m) => m.role === "user" && !m.excludeFromSynthesis)
-            .map((m) => m.text);
+          const userTexts = readinessUserTexts(messagesRef.current);
           if (finalReady || sawReady || mirrorSafetyNet(userTexts)) {
             // Keep readiness in the assistant turn already on screen so the
             // person never sees two conflicting questions back-to-back.
@@ -149,14 +395,18 @@ export function useCompanionChat() {
             setReady(true);
           }
         }
+        setStatus({ type: "idle" });
       } catch {
-        commit((prev) =>
-          prev.map((m) =>
-            m.id === assistantId ? { ...m, text: opts.errorFallback } : m,
-          ),
-        );
+        const currentText =
+          messagesRef.current.find((message) => message.id === assistantId)
+            ?.text ?? "";
+        // Keep a partial answer if any arrived. If none did, remove the empty
+        // bubble without surfacing implementation details to the participant.
+        if (!acc.trim() && !currentText.trim()) {
+          commit((prev) => prev.filter((message) => message.id !== assistantId));
+        }
+        setStatus({ type: "idle" });
       } finally {
-        setStatus("idle");
         busyRef.current = false;
       }
     },
@@ -259,6 +509,113 @@ export function useCompanionChat() {
     [commit],
   );
 
+  const commitVoiceUserTurn = useCallback(
+    (text: string, options: MessageOptions = {}) => {
+      setReady(false);
+      return addUserMessage(text, options);
+    },
+    [addUserMessage],
+  );
+
+  const beginVoiceAssistantTurn = useCallback(
+    (options: MessageOptions = {}) => {
+      const id = genId();
+      voiceRawTextRef.current.set(id, "");
+      commit((prev) => [
+        ...prev,
+        {
+          id,
+          role: "assistant",
+          text: "",
+          excludeFromSynthesis: options.excludeFromSynthesis,
+        },
+      ]);
+      setStatus({ type: "streaming" });
+      return id;
+    },
+    [commit],
+  );
+
+  const appendVoiceAssistantDelta = useCallback(
+    (id: string, delta: string) => {
+      const raw = (voiceRawTextRef.current.get(id) ?? "") + delta;
+      voiceRawTextRef.current.set(id, raw);
+      const { text } = extractReadiness(raw);
+      commit((prev) =>
+        prev.map((message) =>
+          message.id === id ? { ...message, text } : message,
+        ),
+      );
+    },
+    [commit],
+  );
+
+  const finalizeVoiceAssistantTurn = useCallback(
+    (
+      id: string,
+      finalTranscript: string,
+      options: VoiceAssistantTurnOptions = {},
+    ) => {
+      const accumulated = voiceRawTextRef.current.get(id) ?? "";
+      const raw = finalTranscript.trim() ? finalTranscript : accumulated;
+      voiceRawTextRef.current.delete(id);
+      const result = extractVoiceReadiness(raw);
+      const isReady =
+        options.trackReadiness !== false &&
+        (result.ready ||
+          mirrorSafetyNet(readinessUserTexts(messagesRef.current)));
+      let becameReady = false;
+
+      if (!result.text.trim()) {
+        commit((prev) => prev.filter((message) => message.id !== id));
+      } else if (isReady) {
+        commit((prev) =>
+          prev.map((message) =>
+            message.id === id
+              ? {
+                  ...message,
+                  text: SUMMARY_READINESS_PROMPT,
+                  excludeFromSynthesis: true,
+                }
+              : message,
+          ),
+        );
+        setReady(true);
+        becameReady = true;
+      } else {
+        commit((prev) =>
+          prev.map((message) =>
+            message.id === id
+              ? { ...message, text: result.text.trimEnd() }
+              : message,
+          ),
+        );
+      }
+      setStatus({ type: "idle" });
+      return becameReady;
+    },
+    [commit],
+  );
+
+  const interruptVoiceAssistantTurn = useCallback(
+    (id: string) => {
+      const raw = voiceRawTextRef.current.get(id) ?? "";
+      voiceRawTextRef.current.delete(id);
+      const { text } = extractReadiness(raw);
+      commit((prev) =>
+        text.trim()
+          ? prev.map((message) =>
+              message.id === id
+                ? { ...message, text: text.trimEnd() }
+                : message,
+            )
+          : prev.filter((message) => message.id !== id),
+      );
+      setStatus({ type: "idle" });
+    },
+    [commit],
+  );
+
   const userTurnCount = messages.filter((m) => m.role === "user").length;
 
   /**
@@ -291,6 +648,11 @@ export function useCompanionChat() {
     send,
     addAssistantMessage,
     addUserMessage,
+    commitVoiceUserTurn,
+    beginVoiceAssistantTurn,
+    appendVoiceAssistantDelta,
+    finalizeVoiceAssistantTurn,
+    interruptVoiceAssistantTurn,
     userTurnCount,
     ready,
     flagSafety,
