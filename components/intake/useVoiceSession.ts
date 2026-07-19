@@ -44,6 +44,8 @@ class VoiceUnavailableError extends Error {
 const MAX_RECONNECT_ATTEMPTS = 2;
 const RECONNECT_DELAYS_MS = [600, 1_400] as const;
 const REQUEST_TIMEOUT_MS = 8_000;
+const DISCONNECT_GRACE_MS = 2_000;
+const STABLE_CONNECTION_MS = 10_000;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -116,6 +118,8 @@ export function useVoiceSession(options: VoiceSessionOptions) {
   const audioContextRef = useRef<AudioContext | null>(null);
   const meterFrameRef = useRef<number | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
+  const disconnectTimerRef = useRef<number | null>(null);
+  const stableConnectionTimerRef = useRef<number | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const generationRef = useRef(0);
   const intentionalStopRef = useRef(true);
@@ -152,6 +156,15 @@ export function useVoiceSession(options: VoiceSessionOptions) {
   }, []);
 
   const closePeer = useCallback(() => {
+    if (disconnectTimerRef.current !== null) {
+      window.clearTimeout(disconnectTimerRef.current);
+      disconnectTimerRef.current = null;
+    }
+    if (stableConnectionTimerRef.current !== null) {
+      window.clearTimeout(stableConnectionTimerRef.current);
+      stableConnectionTimerRef.current = null;
+    }
+
     const channel = channelRef.current;
     channelRef.current = null;
     if (channel && channel.readyState !== "closed") channel.close();
@@ -360,6 +373,9 @@ export function useVoiceSession(options: VoiceSessionOptions) {
             updateStatus("listening");
           }
           return;
+        case "transcription-error":
+          fallBackToText();
+          return;
         case "transport-error":
           recoverRef.current();
           return;
@@ -371,6 +387,7 @@ export function useVoiceSession(options: VoiceSessionOptions) {
       emitAssistantEvent,
       emitAssistantPlaybackDone,
       flushQueuedAssistantEvents,
+      fallBackToText,
       interruptActiveAssistant,
       updateStatus,
     ],
@@ -540,7 +557,17 @@ export function useVoiceSession(options: VoiceSessionOptions) {
             channel.send(JSON.stringify({ type: "response.create" }));
           }
           microphone.enabled = !inputLockedRef.current;
-          reconnectAttemptsRef.current = 0;
+          if (reconnectAttemptsRef.current > 0) {
+            stableConnectionTimerRef.current = window.setTimeout(() => {
+              stableConnectionTimerRef.current = null;
+              if (
+                peerRef.current === peer &&
+                channel.readyState === "open"
+              ) {
+                reconnectAttemptsRef.current = 0;
+              }
+            }, STABLE_CONNECTION_MS);
+          }
           updateStatus("listening");
           return;
         }
@@ -556,11 +583,27 @@ export function useVoiceSession(options: VoiceSessionOptions) {
 
       peer.onconnectionstatechange = () => {
         if (peerRef.current !== peer) return;
-        if (
-          peer.connectionState === "failed" ||
-          peer.connectionState === "disconnected"
-        ) {
+        if (peer.connectionState === "failed") {
           recoverRef.current();
+          return;
+        }
+        if (peer.connectionState === "disconnected") {
+          if (disconnectTimerRef.current === null) {
+            disconnectTimerRef.current = window.setTimeout(() => {
+              disconnectTimerRef.current = null;
+              if (
+                peerRef.current === peer &&
+                peer.connectionState === "disconnected"
+              ) {
+                recoverRef.current();
+              }
+            }, DISCONNECT_GRACE_MS);
+          }
+          return;
+        }
+        if (disconnectTimerRef.current !== null) {
+          window.clearTimeout(disconnectTimerRef.current);
+          disconnectTimerRef.current = null;
         }
       };
 

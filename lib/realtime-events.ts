@@ -17,6 +17,7 @@ export type VoiceTransportEvent =
   | { type: "user-speech-stopped" }
   | { type: "assistant-audio-started"; responseId: string | null }
   | { type: "assistant-audio-stopped"; responseId: string | null }
+  | { type: "transcription-error" }
   | { type: "transport-error" };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -89,6 +90,7 @@ export function parseRealtimeServerEvent(
         responseId: optionalString(value, "response_id"),
       };
     case "conversation.item.input_audio_transcription.failed":
+      return { type: "transcription-error" };
     case "error":
       return { type: "transport-error" };
     default:
