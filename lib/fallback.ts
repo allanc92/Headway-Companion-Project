@@ -353,7 +353,7 @@ export function fallbackSynthesis(transcript: string): Synthesis {
 
   return {
     reflection:
-      "Here's what I'm hearing, in your words — tell me where I've got it wrong. You named something real, and you gave me a sense not just of how it feels but of the kind of support that would help. What matters now is finding someone who meets you where you actually are. This is a first draft, and you can change anything by telling me.",
+      "Thank you for sharing. You named something real, and you gave me a sense not just of how it feels but of the kind of support that would help. What matters now is finding someone who meets you where you actually are. This is a first draft, and you can change anything by telling me.",
     priorities,
     spectrums: [
       { id: "action_space", leftLabel: "Action-oriented", rightLabel: "Space-holding", value: fit.action_space.value, note: fit.action_space.note },
