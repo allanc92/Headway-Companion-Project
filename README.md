@@ -200,6 +200,7 @@ Provider filtering and scoring live in `lib/providers.ts`:
 | Voice audio | Direct browser-to-Azure WebRTC while a call is active | Not stored by this application; tracks and playback objects are released when the call ends |
 | ZIP, insurance, summary, preferences, chosen fictional provider, and simulated booking | Browser only after the Intention is saved | Unencrypted `localStorage` until browser storage is cleared or the experience is restarted |
 | Page-level usage telemetry | Vercel Web Analytics is mounted globally | Governed by the configured Vercel project |
+| Approximate request geography | Vercel derives city, first-level region, and country from the request IP; the app logs those fields for HTML page requests | Vercel Runtime Logs, subject to the project's retention settings; the app does not log the IP address, coordinates, or query string |
 
 The absence of a database does **not** mean no data leaves the browser:
 conversation text reaches the deployed server and may reach Azure OpenAI in live
@@ -228,10 +229,14 @@ terminal or the Vercel project's **Logs** view:
 vercel logs --project headway-companion-project --environment production --since 30m --no-branch --expand
 ```
 
-Logs contain only operational metadata such as request ID, lifecycle event,
-mode, input/output counts, fallback reason, error type, and elapsed time. They do
-not contain conversation text, generated summaries, ZIP codes, insurance,
-provider names, or match explanations.
+AI lifecycle logs contain only operational metadata such as request ID,
+lifecycle event, mode, input/output counts, fallback reason, error type, and
+elapsed time. A separate `[visitor-geography]` page-view line records the
+pathname plus Vercel's approximate city, first-level region (the state code for
+US requests), and country. It omits IP addresses, coordinates, query strings,
+conversation text, generated summaries, ZIP codes, insurance, provider names,
+and match explanations. Vercel does not provide these geo headers during local
+development, and VPNs or proxies can make the values inaccurate.
 
 ## Run locally
 
