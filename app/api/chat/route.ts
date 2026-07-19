@@ -215,13 +215,13 @@ export async function POST(req: Request): Promise<Response> {
           content: m.text,
         }));
 
-    // Opening turn: hand the model the greeting instruction. Otherwise the shift
+    // Opening turn: lead with the greeting instruction. Otherwise the shift
     // toward fit is the model's own judgement call (see PHASE DISCIPLINE in
     // COMPANION_SYSTEM); this hidden nudge is only a SAFETY NET, slipped in if the
     // model is still circling in "feeling heard" after several substantive turns.
     // Both are invisible to the person and never rendered as a step.
     const system = isOpening
-      ? `${COMPANION_SYSTEM}\n\n${COMPANION_GREETING}`
+      ? `${COMPANION_GREETING}\n\n${COMPANION_SYSTEM}`
       : fitNudgeSafetyNet(userTexts)
         ? `${COMPANION_SYSTEM}\n\n${COMPANION_FIT_NUDGE}`
         : COMPANION_SYSTEM;
