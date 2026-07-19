@@ -102,16 +102,15 @@ export interface ScoredProvider {
   whyThisFits?: string; // optional LLM-written, patient-facing sentence
 }
 
-export interface Bottleneck {
-  kind: "insurance" | "location" | "availability" | "none";
+export interface MatchTradeoff {
+  kind: "availability" | "priority" | "style" | "none";
   message: string;
-  unlocks: number; // how many more providers relaxing this unlocks
 }
 
 export interface MatchResult {
   matches: ScoredProvider[];
   totalInNetwork: number; // passed hard filters
-  bottleneck: Bottleneck;
+  tradeoff: MatchTradeoff;
 }
 
 /** The persisted, living artifact. */

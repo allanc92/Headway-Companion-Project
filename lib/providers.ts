@@ -1,6 +1,6 @@
 import type {
-  Bottleneck,
   IntakeContext,
+  MatchTradeoff,
   MatchResult,
   Priority,
   Provider,
@@ -26,7 +26,7 @@ export const NO_INSURANCE_VALUES = ["", "self-pay", "not-sure"];
 
 /**
  * Lightweight ZIP -> state approximation. Not exhaustive — enough for a prototype
- * so the location hard-filter and bottleneck surfacing behave believably.
+ * so the location eligibility filter behaves believably.
  */
 const ZIP3_STATE: Record<string, string> = {
   "100": "NY", "101": "NY", "102": "NY", "103": "NY", "104": "NY", "112": "NY",
@@ -337,13 +337,17 @@ const AVAIL_BONUS: Record<Provider["availability"], number> = {
   waitlist: -0.07,
 };
 
+const SPECTRUM_IDS: SpectrumId[] = ["action_space", "structure", "depth"];
+
 function spectrumSimilarity(
   desired: Record<SpectrumId, number>,
   provider: Record<SpectrumId, number>,
 ): number {
-  const ids: SpectrumId[] = ["action_space", "structure", "depth"];
   const avgDiff =
-    ids.reduce((sum, id) => sum + Math.abs(desired[id] - provider[id]), 0) / ids.length;
+    SPECTRUM_IDS.reduce(
+      (sum, id) => sum + Math.abs(desired[id] - provider[id]),
+      0,
+    ) / SPECTRUM_IDS.length;
   return 1 - avgDiff / 100;
 }
 
@@ -379,10 +383,9 @@ function buildReasons(
     reasons.push(`Specializes in ${sharedFocus.join(" & ")}`);
   }
   // Highlight the spectrum where alignment is strongest.
-  const ids: SpectrumId[] = ["action_space", "structure", "depth"];
   let bestId: SpectrumId = "action_space";
   let bestDiff = Infinity;
-  for (const id of ids) {
+  for (const id of SPECTRUM_IDS) {
     const diff = Math.abs(desired[id] - p.spectrums[id]);
     if (diff < bestDiff) {
       bestDiff = diff;
@@ -424,50 +427,189 @@ function scoreProvider(
   };
 }
 
-function detectBottleneck(
-  context: IntakeContext,
-  inNetworkCount: number,
-): Bottleneck {
-  if (inNetworkCount >= 6) return { kind: "none", message: "", unlocks: 0 };
+interface TradeoffCandidate extends MatchTradeoff {
+  strength: number;
+}
 
-  const passLocationOnly = PROVIDERS.filter((p) =>
-    passesLocation(p, context.zip),
+const SPECTRUM_TRADEOFF_LABELS: Record<
+  SpectrumId,
+  readonly [string, string]
+> = {
+  action_space: ["tools and direction", "space to be heard"],
+  structure: ["structured sessions", "open exploration"],
+  depth: ["practical, present-focused work", "deeper exploration"],
+};
+
+const FOCUS_LABELS: Record<string, string> = {
+  relationships: "relationship work",
+  anxiety: "anxiety support",
+  depression: "depression support",
+  "grief & loss": "grief and loss",
+  trauma: "trauma-informed work",
+  "life transitions": "life transitions",
+  "identity & self": "identity and self-exploration",
+  "stress & burnout": "stress and burnout",
+  "self-esteem": "self-esteem",
+  family: "family work",
+};
+
+function availabilityTradeoff(
+  matches: ScoredProvider[],
+): TradeoffCandidate | null {
+  const closest = matches[0];
+  if (!closest || closest.provider.availability === "open") return null;
+
+  const openCount = matches.filter(
+    ({ provider }) => provider.availability === "open",
   ).length;
-  const passInsuranceOnly = PROVIDERS.filter((p) =>
-    passesInsurance(p, context.insurance),
-  ).length;
+  if (!openCount) return null;
 
-  const insuranceUnlocks = passLocationOnly - inNetworkCount;
-  const locationUnlocks = passInsuranceOnly - inNetworkCount;
-
-  const insuranceIsFiltering = !NO_INSURANCE_VALUES.includes(context.insurance);
-
-  if (insuranceIsFiltering && insuranceUnlocks >= locationUnlocks && insuranceUnlocks > 0) {
-    return {
-      kind: "insurance",
-      unlocks: insuranceUnlocks,
-      message: `Your plan (${context.insurance}) is the tightest constraint right now. Broadening it — or exploring a few out-of-network options — would open up ${insuranceUnlocks} more well-matched ${plural(insuranceUnlocks, "therapist")}.`,
-    };
-  }
-
-  if (locationUnlocks > 0) {
-    return {
-      kind: "location",
-      unlocks: locationUnlocks,
-      message: `Opening up to telehealth beyond your immediate area would add ${locationUnlocks} more well-matched ${plural(locationUnlocks, "therapist")}.`,
-    };
-  }
+  const timing =
+    closest.provider.availability === "waitlist"
+      ? "a short waitlist"
+      : "limited availability";
+  const alternatives =
+    openCount === 1
+      ? "Another match has openings this week"
+      : `${openCount} other matches have openings this week`;
 
   return {
     kind: "availability",
-    unlocks: 0,
-    message:
-      "A few of your strongest matches have limited availability. Staying open on timing helps you reach the therapist who fits, not just the one who's free first.",
+    strength: 100,
+    message: `Your closest fit has ${timing}. If starting sooner matters more, ${alternatives}, with a different balance of focus and working style.`,
   };
 }
 
-function plural(n: number, word: string): string {
-  return n === 1 ? word : `${word}s`;
+function priorityTradeoff(
+  matches: ScoredProvider[],
+  priorities: Priority[],
+): TradeoffCandidate | null {
+  const focusTags = [...new Set(priorities.flatMap((p) => p.focusTags))];
+  if (focusTags.length < 2) return null;
+
+  const coverage = focusTags
+    .map((tag) => ({
+      tag,
+      providerIds: new Set(
+        matches
+          .filter(({ provider }) => provider.specialties.includes(tag))
+          .map(({ provider }) => provider.id),
+      ),
+    }))
+    .filter(({ providerIds }) => providerIds.size > 0);
+
+  let best:
+    | {
+        first: (typeof coverage)[number];
+        second: (typeof coverage)[number];
+        reach: number;
+      }
+    | undefined;
+
+  for (let i = 0; i < coverage.length; i += 1) {
+    for (let j = i + 1; j < coverage.length; j += 1) {
+      const first = coverage[i];
+      const second = coverage[j];
+      const sharesProvider = [...first.providerIds].some((id) =>
+        second.providerIds.has(id),
+      );
+      if (sharesProvider) continue;
+
+      const reach = first.providerIds.size + second.providerIds.size;
+      if (!best || reach > best.reach) best = { first, second, reach };
+    }
+  }
+
+  if (!best) return null;
+
+  const firstLabel =
+    FOCUS_LABELS[best.first.tag] ?? best.first.tag.replaceAll("&", "and");
+  const secondLabel =
+    FOCUS_LABELS[best.second.tag] ?? best.second.tag.replaceAll("&", "and");
+
+  return {
+    kind: "priority",
+    strength: 55 + Math.min(20, best.reach * 3),
+    message: `Your matches divide between therapists who lead with ${firstLabel} and those who lead with ${secondLabel}. Deciding which feels most important right now can help you choose where to start.`,
+  };
+}
+
+function styleTradeoff(
+  matches: ScoredProvider[],
+  spectrums: Spectrum[],
+  desired: Record<SpectrumId, number>,
+): TradeoffCandidate | null {
+  const specifiedIds = new Set(spectrums.map((s) => s.id));
+  let best: TradeoffCandidate | null = null;
+
+  for (const id of SPECTRUM_IDS) {
+    if (!specifiedIds.has(id)) continue;
+
+    const desiredValue = desired[id];
+    if (Math.abs(desiredValue - 50) < 15) continue;
+
+    const towardHigh = desiredValue < 50;
+    const alternatives = matches
+      .map(({ provider }) => {
+        const providerValue = provider.spectrums[id];
+        const movement = towardHigh
+          ? providerValue - desiredValue
+          : desiredValue - providerValue;
+        return movement;
+      })
+      .filter((movement) => movement >= 20);
+
+    if (!alternatives.length) continue;
+
+    const preferredLabel =
+      SPECTRUM_TRADEOFF_LABELS[id][desiredValue < 50 ? 0 : 1];
+    const alternativeLabel =
+      SPECTRUM_TRADEOFF_LABELS[id][desiredValue < 50 ? 1 : 0];
+    const subject =
+      alternatives.length === 1
+        ? "One of these matches leans"
+        : `${alternatives.length} of these matches lean`;
+    const averageMovement =
+      alternatives.reduce((sum, movement) => sum + movement, 0) /
+      alternatives.length;
+    const candidate: TradeoffCandidate = {
+      kind: "style",
+      strength:
+        45 +
+        Math.min(35, Math.round(averageMovement / 2)) +
+        Math.min(15, alternatives.length * 3),
+      message: `You leaned toward ${preferredLabel}. ${subject} more toward ${alternativeLabel}. Staying open to that balance gives you more choice without changing the priorities you named.`,
+    };
+
+    if (!best || candidate.strength > best.strength) best = candidate;
+  }
+
+  return best;
+}
+
+function detectTradeoff(
+  matches: ScoredProvider[],
+  priorities: Priority[],
+  spectrums: Spectrum[],
+  desired: Record<SpectrumId, number>,
+): MatchTradeoff {
+  if (matches.length < 2) return { kind: "none", message: "" };
+
+  const candidates = [
+    availabilityTradeoff(matches),
+    priorityTradeoff(matches, priorities),
+    styleTradeoff(matches, spectrums, desired),
+  ].filter((candidate): candidate is TradeoffCandidate => candidate !== null);
+
+  const best = candidates.reduce<TradeoffCandidate | null>(
+    (current, candidate) =>
+      !current || candidate.strength > current.strength ? candidate : current,
+    null,
+  );
+
+  return best
+    ? { kind: best.kind, message: best.message }
+    : { kind: "none", message: "" };
 }
 
 export function matchProviders(
@@ -491,10 +633,11 @@ export function matchProviders(
       const rank = { open: 0, limited: 1, waitlist: 2 } as const;
       return rank[a.provider.availability] - rank[b.provider.availability];
     });
+  const matches = scored.slice(0, 6);
 
   return {
-    matches: scored.slice(0, 6),
+    matches,
     totalInNetwork: inNetwork.length,
-    bottleneck: detectBottleneck(context, inNetwork.length),
+    tradeoff: detectTradeoff(matches, priorities, spectrums, desired),
   };
 }

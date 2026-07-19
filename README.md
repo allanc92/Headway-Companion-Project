@@ -71,8 +71,9 @@ Headway facts.
    as tactile, malleable **priority cards** the patient can rank, edit, or discard, each
    anchored to a phrase they actually said.
 3. **Transparency is trust** — we replace filter sidebars with human **spectrums**
-   (Action-oriented ↔ Space-holding) and surface real marketplace trade-offs. When
-   criteria are too narrow, the UI shows the bottleneck and what adjusting it unlocks.
+   (Action-oriented ↔ Space-holding) and surface real marketplace trade-offs. The
+   UI explains meaningful choices around timing, working style, and care priorities
+   without treating insurance coverage or provider licensure as negotiable.
 4. **Context is connection** — the intake becomes a persistent **Intention** artifact: it
    belongs to the patient, can be shared with a therapist if they choose, and stays an
    updatable compass for the patient.
@@ -165,8 +166,8 @@ Provider filtering and scoring live in `lib/providers.ts`:
   ZIP-to-state/in-person eligibility
 - **Soft fit:** 55% focus-area overlap, 37% working-style similarity, plus a
   small availability adjustment
-- **Transparency:** deterministic match reasons and bottleneck copy explain
-  which constraint narrows the result set
+- **Transparency:** deterministic match reasons and trade-off copy highlight
+  availability, working-style, or priority differences within the eligible matches
 
 ## Safety, privacy, and data handling
 
