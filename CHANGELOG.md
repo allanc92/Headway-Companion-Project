@@ -22,6 +22,9 @@ improvement.
   client secret is minted server-side, the resource key remains private, and
   browser audio tracks are released at call end. Voice remains off by default
   and retains the prototype’s existing non-clinical safety and readiness gates.
+- Unified the voice button, session endpoint, and opening invitation behind one
+  server-side runtime capability so deployments never advertise a missing
+  control or freeze voice availability into the browser bundle at build time.
 
 ## Initial prototype - 2026-07-17
 

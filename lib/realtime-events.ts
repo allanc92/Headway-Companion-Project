@@ -1,4 +1,5 @@
 export type VoiceTransportEvent =
+  | { type: "session-ready" }
   | { type: "user-transcript"; text: string }
   | {
       type: "assistant-delta";
@@ -45,6 +46,8 @@ export function parseRealtimeServerEvent(
   if (!isRecord(value) || typeof value.type !== "string") return null;
 
   switch (value.type) {
+    case "session.updated":
+      return { type: "session-ready" };
     case "conversation.item.input_audio_transcription.completed": {
       const text = optionalString(value, "transcript")?.trim();
       return text ? { type: "user-transcript", text } : null;

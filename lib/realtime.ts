@@ -95,21 +95,7 @@ export function buildRealtimeSessionConfig(config: RealtimeConfig) {
       type: "realtime",
       model: config.deployment,
       instructions: `${COMPANION_SYSTEM}\n\n${COMPANION_VOICE_SESSION}`,
-      output_modalities: ["audio"],
       audio: {
-        input: {
-          transcription: {
-            model: config.transcriptionDeployment,
-          },
-          turn_detection: {
-            type: "server_vad",
-            threshold: 0.5,
-            prefix_padding_ms: 300,
-            silence_duration_ms: 650,
-            create_response: true,
-            interrupt_response: true,
-          },
-        },
         output: {
           voice: config.voice,
         },

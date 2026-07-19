@@ -65,10 +65,14 @@ interface PendingVoiceSummaryHandoff {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const READINESS_PROMPT_DELAY_MS = 1100;
-const VOICE_FEATURE_ENABLED =
-  process.env.NEXT_PUBLIC_VOICE_ENABLED === "true";
 
-export function IntakeExperience({ context }: { context: IntakeContext }) {
+export function IntakeExperience({
+  context,
+  voiceEnabled,
+}: {
+  context: IntakeContext;
+  voiceEnabled: boolean;
+}) {
   const router = useRouter();
   const chat = useCompanionChat();
 
@@ -677,7 +681,7 @@ export function IntakeExperience({ context }: { context: IntakeContext }) {
           composerDisabled={composerDisabled}
           composerPlaceholder={composerPlaceholder}
           voiceEnabled={
-            VOICE_FEATURE_ENABLED &&
+            voiceEnabled &&
             (stage === "conversation" || stage === "confirming")
           }
           voiceStatus={voice.status}
