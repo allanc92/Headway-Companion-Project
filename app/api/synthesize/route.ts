@@ -91,7 +91,6 @@ export async function POST(req: Request): Promise<Response> {
       model: getModel(),
       schema: synthesisSchema,
       prompt: buildSynthesisPrompt(transcript, FOCUS_AREAS),
-      temperature: 0.4,
     });
 
     const synthesis: Synthesis = {

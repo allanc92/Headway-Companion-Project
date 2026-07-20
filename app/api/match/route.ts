@@ -59,8 +59,6 @@ async function writeBlurb(
         prioritiesText,
         spectrumsText,
       ),
-      temperature: 0.6,
-      maxOutputTokens: 80,
     });
     const cleaned = text.trim().replace(/^["']|["']$/g, "");
     if (cleaned) return { text: cleaned, generated: true };

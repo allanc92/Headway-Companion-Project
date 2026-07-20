@@ -259,7 +259,6 @@ export async function POST(req: Request): Promise<Response> {
       model: getModel(),
       system,
       messages: modelMessages,
-      temperature: 0.7,
     });
 
     return streamResponse(

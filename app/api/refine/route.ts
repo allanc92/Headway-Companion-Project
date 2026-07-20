@@ -109,7 +109,6 @@ export async function POST(req: Request): Promise<Response> {
         JSON.stringify(current, null, 2),
         FOCUS_AREAS,
       ),
-      temperature: 0.35,
     });
 
     const refinement = {
