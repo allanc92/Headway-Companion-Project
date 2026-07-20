@@ -150,20 +150,22 @@ export function Conversation({
       >
         {showChips && <SparkChips onPick={onSend} disabled={streaming} />}
 
-        {voiceEnabled && onVoiceStart && onVoiceEnd && (
+        {voiceEnabled && onVoiceEnd && (
           <VoiceControls
             status={voiceStatus}
             micLevel={voiceMicLevel}
             fallbackMessage={voiceFallbackMessage}
-            disabled={voiceDisabled}
-            onStart={onVoiceStart}
             onEnd={onVoiceEnd}
           />
         )}
 
         <Composer
           onSend={onSend}
+          onVoiceStart={
+            voiceEnabled && voiceStatus === "idle" ? onVoiceStart : undefined
+          }
           disabled={streaming || composerDisabled}
+          voiceDisabled={voiceDisabled}
           placeholder={
             composerPlaceholder ??
             (composerDisabled

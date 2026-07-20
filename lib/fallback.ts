@@ -46,7 +46,7 @@ const SPARK_REPLIES: Record<string, string> = {
  */
 export function fallbackOpening(voiceEnabled: boolean): string {
   const invitation = voiceEnabled
-    ? "You can share here, or press Talk to Huey to talk it through."
+    ? "You can share here, or use the voice button in the message box to talk it through."
     : "You can share whatever feels most present here.";
 
   return [
