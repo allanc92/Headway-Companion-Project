@@ -263,7 +263,7 @@ Then configure the deployment:
 | `AZURE_USE_V1_API` | No | Set to `true` to use `/openai/v1` instead of deployment-based URLs |
 | `VOICE_ENABLED` | Yes for voice | Server-side runtime gate shared by the session endpoint, UI, and opening copy; defaults to `false` |
 | `AZURE_REALTIME_DEPLOYMENT` | Yes for voice | Azure deployment name targeting `gpt-realtime-2.1` where available |
-| `AZURE_REALTIME_TRANSCRIPTION_DEPLOYMENT` | Yes for voice | Azure input-transcription model or deployment name, such as `gpt-realtime-whisper`, used for canonical user captions |
+| `AZURE_REALTIME_TRANSCRIPTION_DEPLOYMENT` | Yes for voice | Azure input-transcription deployment name, such as `gpt-4o-mini-transcribe`, used for canonical user captions |
 | `AZURE_REALTIME_VOICE` | No | Realtime output voice; defaults to `marin` |
 | `AZURE_REALTIME_ENDPOINT` | No | Full Azure resource endpoint when it differs from the text resource |
 
