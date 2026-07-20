@@ -13,6 +13,12 @@ improvement.
 
 ## Unreleased
 
+- Added a spacious browser-local care home after simulated booking, carrying the
+  existing Intention, fictional provider choice, simulated session, shared
+  priorities, and onboarding itinerary into a responsive `/portal` route.
+- Kept the portal's billing, benefits, patient files, notes, and Huey dock honest
+  and bounded: no eligibility or payment claims, no new persisted care model,
+  and no second chat backend.
 - Added an opt-in, always-listening conversation mode using direct Azure
   Realtime WebRTC, server voice activity detection, interruption, and live
   captions in the same transcript as text chat. Typing remains unavailable

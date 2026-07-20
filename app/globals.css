@@ -43,6 +43,7 @@
   --color-mint-soft: #dff2e7;
   --color-hairline: #cdded5;
   --color-hairline-strong: #b9d4c8;
+  --color-portal-line: #6f8f80;
   --color-ink-cool: #33433d;
   --color-ink-muted: #52635d;
 
@@ -120,6 +121,15 @@
   .chat-composer-fade {
     background:
       linear-gradient(to top, rgba(243, 248, 223, 0.98) 0%, rgba(251, 252, 248, 0.94) 58%, rgba(251, 252, 248, 0) 100%);
+  }
+
+  .portal-canvas {
+    background:
+      radial-gradient(circle at 8% 12%, rgba(220, 235, 247, 0.9) 0%, rgba(220, 235, 247, 0.22) 28%, rgba(220, 235, 247, 0) 52%),
+      radial-gradient(circle at 90% 18%, rgba(223, 242, 231, 0.78) 0%, rgba(223, 242, 231, 0.2) 30%, rgba(223, 242, 231, 0) 54%),
+      radial-gradient(circle at 48% 94%, rgba(243, 248, 223, 0.55) 0%, rgba(243, 248, 223, 0) 48%),
+      linear-gradient(180deg, #eef6fb 0%, #fbfcf8 34%, #f7f5f0 100%);
+    background-attachment: fixed;
   }
 
   .hide-scrollbar {

@@ -32,7 +32,7 @@ person it describes.**
 
 ## The customer journey
 
-`Find care -> Get oriented -> Reflect -> Confirm -> Understand -> Choose -> Keep`
+`Find care -> Get oriented -> Reflect -> Confirm -> Understand -> Choose -> Keep -> Return`
 
 | Moment | Customer need | Prototype response |
 | --- | --- | --- |
@@ -43,6 +43,7 @@ person it describes.**
 | Understand | "Show me what you heard, in language I recognize." | A structured reflection, priorities, and working-style spectrums are surfaced and can be corrected through chat. |
 | Choose | "Explain why someone may fit, including the trade-offs." | Deterministic filters and scoring rank fictional providers; the UI explains fit, constraints, availability, and a simulated booking choice. |
 | Keep | "Let me carry this understanding forward." | A user-owned Intention is saved on the device and framed as something the person may bring into care if they choose. |
+| Return | "What did I choose, and what comes next?" | A browser-local care home reads that same Intention and organizes the fictional provider, simulated session, onboarding itinerary, and patient-owned context without creating an account or a second care record. |
 
 ## Capability boundaries
 
@@ -56,6 +57,7 @@ Clear boundaries are part of the product, especially in a sensitive domain.
 | Provider matching | Simulated | Runs deterministic filtering and scoring over 14 fictional provider records using an approximate ZIP-to-state mapping. It does not establish clinical suitability or real network eligibility. |
 | Availability and booking | Simulated | Dates and times are generated deterministically from mock provider availability. No external scheduling system is contacted. |
 | Intention persistence | Implemented locally | Saves context, summary, selected provider, and simulated booking to browser `localStorage`. There is no account sync, export, or sharing workflow. |
+| Patient care home | Implemented locally | `/portal` reads the existing browser-local Intention. Appointments, benefits, billing, files, notes, and Huey's dock remain clearly bounded prototype views; they do not add real operations or another assistant backend. |
 | Safety experience | Prototype | Uses US crisis resources, model classification when configured, and heuristic fallback detection. It has not received production clinical validation. |
 | Authentication, billing, and marketplace operations | Not implemented | There is no account system, database, payment flow, real provider inventory, or real booking. |
 
@@ -167,6 +169,7 @@ does not traverse the Next.js server.
 | Understanding | `POST /api/synthesize` | Produces a Zod-validated reflection, priorities, and spectrums or a deterministic fallback synthesis. |
 | Summary correction | `POST /api/refine` | Revises the structured understanding from conversational feedback. |
 | Provider matching | `POST /api/match` | Runs deterministic hard filters and weighted scoring, then uses the model or fallback code only to explain the result. |
+| Patient care home | `/portal` | Reads the same device-local Intention in the browser and presents its fictional provider, simulated booking, and onboarding itinerary. |
 
 Provider filtering and scoring live in `lib/providers.ts`:
 
@@ -331,6 +334,7 @@ app/
   page.tsx                         Headway-inspired entry and Find Care form
   getting-started/page.tsx         Orientation interstitial
   intake/page.tsx                  Conversation and inline post-chat journey
+  portal/page.tsx                  Browser-local patient care home
   api/
     chat/route.ts                  Streaming companion
     realtime/session/route.ts      Ephemeral Realtime client secrets
@@ -342,6 +346,7 @@ components/
   home/                            Entry experience and hero
   interstitial/                    Getting Started experience
   intake/                          Chat, summary, matches, booking, Intention
+  portal/                          Responsive care-home portal
 lib/
   azure.ts                         Credential gate and model provider
   realtime.ts                      Server-only Realtime configuration
