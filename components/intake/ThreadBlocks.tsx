@@ -1,7 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { IntentionArtifact } from "./IntentionArtifact";
+import { ProviderAvatar } from "./ProviderAvatar";
 import { ThinkingShimmer } from "./ThinkingShimmer";
 import { ArrowIcon, CheckIcon, CloseIcon, FeatherIcon } from "@/components/ui/icons";
 import { getProviderBookingDays } from "@/lib/booking";
@@ -13,11 +15,6 @@ import type {
   Provider,
   Spectrum,
 } from "@/lib/types";
-
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/);
-  return (parts[0]?.[0] ?? "") + (parts[parts.length - 1]?.[0] ?? "");
-}
 
 function ExpandIcon({ open }: { open: boolean }) {
   return (
@@ -428,6 +425,7 @@ export function InlineIntentionCard({
   onRestart: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const booking = intention.booking;
   const showInNetwork =
     provider &&
     !NO_INSURANCE_VALUES.includes(intention.context.insurance) &&
@@ -440,43 +438,85 @@ export function InlineIntentionCard({
 
   return (
     <section className="animate-rise space-y-4">
-      <div className="rounded-3xl border border-hairline-strong bg-mint-soft/80 p-5 shadow-[0_12px_32px_rgba(47,90,134,0.08)]">
-        <div className="flex items-start gap-4">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-forest text-base font-semibold uppercase text-mint">
-            {provider ? initials(provider.name) : <CheckIcon width={22} height={22} />}
+      <div className="rounded-[2rem] border border-hairline-strong bg-surface/95 p-5 shadow-[0_18px_48px_rgba(47,90,134,0.1)] sm:p-6">
+        <header className="flex items-start gap-4">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-mint-soft text-forest">
+            <CheckIcon width={24} height={24} />
           </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium text-forest">Intention ready</p>
-            <h2 className="mt-1 font-serif text-xl leading-snug text-ink">
-              {provider ? provider.name : "Your chosen therapist"}
+          <div>
+            <p className="text-sm font-medium text-forest">Choice saved to this device</p>
+            <h2 className="mt-1 font-serif text-[1.65rem] leading-tight text-ink">
+              {booking ? "Your care itinerary is ready." : "Your Intention is ready."}
             </h2>
-            <p className="text-sm text-ink-muted">
-              {provider
-                ? `${provider.title}${provider.pronouns ? ` · ${provider.pronouns}` : ""}`
-                : "Your therapy compass is saved."}
+            <p className="mt-2 max-w-xl text-[0.95rem] leading-relaxed text-ink-muted">
+              {booking
+                ? "Take a breath. Your fictional provider, simulated time, and the priorities you named are gathered in one place."
+                : "The priorities you named and your chosen fictional provider are gathered in one place."}
             </p>
-            {showInNetwork && (
-              <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-surface/90 px-2.5 py-1 text-[0.72rem] font-medium text-forest-700">
-                <CheckIcon width={13} height={13} /> In network with {intention.context.insurance}
-              </span>
-            )}
-            {intention.booking && (
-              <p className="mt-2 text-sm font-medium text-forest">
-                Session requested · {intention.booking.dayLabel} at {intention.booking.time}
+          </div>
+        </header>
+
+        {provider && (
+          <div className="mt-6 grid gap-4 rounded-3xl border border-hairline bg-air/55 p-4 sm:grid-cols-[5rem_1fr_auto] sm:items-center">
+            <ProviderAvatar
+              name={provider.name}
+              seed={provider.photoSeed}
+              className="h-20 w-20 rounded-2xl"
+            />
+            <div className="min-w-0">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-sky-ink">
+                Fictional provider
               </p>
+              <h3 className="mt-1 font-serif text-xl text-ink">{provider.name}</h3>
+              <p className="text-sm text-ink-muted">
+                {provider.title}
+                {provider.pronouns ? ` · ${provider.pronouns}` : ""}
+              </p>
+              {showInNetwork && (
+                <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-surface px-2.5 py-1 text-[0.72rem] font-medium text-forest-700">
+                  <CheckIcon width={13} height={13} /> Prototype match with{" "}
+                  {intention.context.insurance}
+                </span>
+              )}
+            </div>
+            {booking && (
+              <div className="rounded-2xl bg-mint-soft px-4 py-3 sm:min-w-44">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-forest">
+                  Simulated session
+                </p>
+                <p className="mt-1 font-medium text-ink">{booking.dayLabel}</p>
+                <p className="text-sm text-ink-muted">
+                  {booking.time}
+                  {booking.modality ? ` · ${booking.modality}` : ""}
+                </p>
+              </div>
             )}
           </div>
-        </div>
+        )}
 
-        <p className="mt-4 text-[0.95rem] leading-relaxed text-ink-muted">
-          If you choose to share it, your therapist can start with your words, your
-          priorities, and the way you want to work together.
-        </p>
+        <ol className="mt-5 grid gap-2.5 sm:grid-cols-3" aria-label="Saved care itinerary">
+          {[
+            "Intention saved",
+            provider ? "Therapist chosen" : "Choice saved",
+            booking ? "Time selected" : "Ready to revisit",
+          ].map((item) => (
+            <li
+              key={item}
+              className="flex items-center gap-2 rounded-2xl bg-mint-soft/55 px-3 py-2.5 text-sm font-medium text-ink-muted"
+            >
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-surface text-forest">
+                <CheckIcon width={14} height={14} />
+              </span>
+              {item}
+            </li>
+          ))}
+        </ol>
+
         <button
           type="button"
           onClick={() => setExpanded((open) => !open)}
           aria-expanded={expanded}
-          className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-forest px-4 py-3 font-medium text-mint transition-colors hover:bg-forest-700"
+          className="mt-5 flex w-full items-center justify-center gap-2 rounded-2xl border border-hairline-strong bg-surface px-4 py-3 font-medium text-ink-muted transition-colors hover:border-forest/40 hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-forest/50"
         >
           {expanded ? "Hide full Intention" : "View full Intention"}
           <ExpandIcon open={expanded} />
@@ -503,6 +543,18 @@ export function InlineIntentionCard({
           />
         </div>
       )}
+
+      <Link
+        href="/portal"
+        className="flex w-full items-center justify-center gap-2 rounded-2xl bg-forest px-5 py-4 font-semibold text-mint shadow-[0_14px_32px_rgba(20,96,59,0.18)] transition-colors hover:bg-forest-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-forest focus-visible:ring-offset-2 focus-visible:ring-offset-air-wash"
+      >
+        Visit your portal
+        <ArrowIcon width={18} height={18} aria-hidden="true" />
+      </Link>
+      <p className="text-center text-xs leading-relaxed text-ink-muted">
+        This prototype stores the itinerary only in this browser. No real appointment was
+        booked.
+      </p>
     </section>
   );
 }

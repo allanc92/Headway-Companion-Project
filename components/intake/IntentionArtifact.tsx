@@ -1,7 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import { CheckIcon, HeartIcon, FeatherIcon } from "@/components/ui/icons";
+import { CheckIcon, FeatherIcon } from "@/components/ui/icons";
 import { NO_INSURANCE_VALUES } from "@/lib/providers";
 import type { Intention, Provider } from "@/lib/types";
 
@@ -21,7 +20,6 @@ export function IntentionArtifact({
   onEdit: () => void;
   onRestart: () => void;
 }) {
-  const [requestConfirmed, setRequestConfirmed] = useState(false);
   const booking = intention.booking;
   const showInNetwork =
     provider &&
@@ -68,7 +66,7 @@ export function IntentionArtifact({
             <>
               <div className="mt-4 rounded-2xl bg-mint-soft/80 px-4 py-3">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-forest">
-                  Requested session
+                  Selected session · simulated
                 </p>
                 <p className="mt-1 font-medium text-ink">
                   {booking.dayLabel} at {booking.time}
@@ -78,37 +76,14 @@ export function IntentionArtifact({
                   Saved with this demo Intention.
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => setRequestConfirmed(true)}
-                className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-forest px-4 py-3 font-medium text-mint transition-colors hover:bg-forest-700"
-              >
-                {requestConfirmed ? (
-                  <>
-                    <CheckIcon width={17} height={17} /> Session requested
-                  </>
-                ) : (
-                  <>
-                    <HeartIcon width={17} height={17} /> Confirm request
-                  </>
-                )}
-              </button>
               <p className="mt-2 text-center text-xs text-ink-muted">
-                Prototype — this saves your selected time locally; no real appointment is booked.
+                Prototype only — no real appointment has been requested or booked.
               </p>
             </>
           ) : (
-            <>
-              <button
-                type="button"
-                className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-forest px-4 py-3 font-medium text-mint transition-colors hover:bg-forest-700"
-              >
-                <HeartIcon width={17} height={17} /> Request a first session
-              </button>
-              <p className="mt-2 text-center text-xs text-ink-muted">
-                Prototype — choose a time in the flow to attach booking details.
-              </p>
-            </>
+            <div className="mt-4 rounded-2xl border border-hairline bg-surface/80 px-4 py-3 text-sm leading-relaxed text-ink-muted">
+              No simulated session time is attached to this Intention yet.
+            </div>
           )}
         </section>
       )}
