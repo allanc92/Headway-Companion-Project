@@ -1,19 +1,27 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { ArrowIcon } from "@/components/ui/icons";
+import { ArrowIcon, VoiceWaveIcon } from "@/components/ui/icons";
+import { VOICE_COPY } from "@/lib/copy";
 
 export function Composer({
   onSend,
+  onVoiceStart,
   disabled,
+  voiceDisabled = false,
   placeholder = "Take your time. Start wherever feels right…",
 }: {
   onSend: (text: string) => void;
+  onVoiceStart?: () => void;
   disabled?: boolean;
+  voiceDisabled?: boolean;
   placeholder?: string;
 }) {
   const [value, setValue] = useState("");
   const ref = useRef<HTMLTextAreaElement>(null);
+  const hasInput = value.length > 0;
+  const hasMessage = Boolean(value.trim());
+  const voiceAction = Boolean(onVoiceStart) && !hasInput;
 
   function submit() {
     const text = value.trim();
@@ -23,7 +31,16 @@ export function Composer({
     if (ref.current) ref.current.style.height = "auto";
   }
 
+  function handleAction() {
+    if (voiceAction && onVoiceStart) {
+      onVoiceStart();
+      return;
+    }
+    submit();
+  }
+
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.nativeEvent.isComposing) return;
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       submit();
@@ -51,12 +68,33 @@ export function Composer({
       />
       <button
         type="button"
-        onClick={submit}
-        disabled={disabled || !value.trim()}
-        aria-label="Send"
-        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-forest text-mint transition-colors hover:bg-forest-700 disabled:opacity-40"
+        onClick={handleAction}
+        disabled={
+          voiceAction ? disabled || voiceDisabled : disabled || !hasMessage
+        }
+        aria-label={voiceAction ? VOICE_COPY.start : "Send"}
+        className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-forest text-mint transition-colors duration-150 hover:bg-forest-700 disabled:cursor-not-allowed disabled:opacity-40 motion-reduce:transition-none"
       >
-        <ArrowIcon width={20} height={20} />
+        <span
+          aria-hidden="true"
+          className={`absolute flex items-center justify-center transition-[opacity,transform] duration-150 motion-reduce:transition-none ${
+            voiceAction
+              ? "scale-100 opacity-100"
+              : "scale-75 opacity-0"
+          }`}
+        >
+          <VoiceWaveIcon width={22} height={22} />
+        </span>
+        <span
+          aria-hidden="true"
+          className={`absolute flex items-center justify-center transition-[opacity,transform] duration-150 motion-reduce:transition-none ${
+            voiceAction
+              ? "scale-75 opacity-0"
+              : "scale-100 opacity-100"
+          }`}
+        >
+          <ArrowIcon width={20} height={20} />
+        </span>
       </button>
     </div>
   );

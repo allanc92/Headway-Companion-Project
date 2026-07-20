@@ -159,3 +159,11 @@ export function MicrophoneIcon(props: IconProps) {
     </svg>
   );
 }
+
+export function VoiceWaveIcon(props: IconProps) {
+  return (
+    <svg {...base} width={20} height={20} {...props}>
+      <path d="M4.5 10.5v3M8.25 8.25v7.5M12 5.5v13M15.75 7.5v9M19.5 10v4" />
+    </svg>
+  );
+}

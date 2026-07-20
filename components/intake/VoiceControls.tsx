@@ -21,15 +21,11 @@ export function VoiceControls({
   status,
   micLevel,
   fallbackMessage,
-  disabled,
-  onStart,
   onEnd,
 }: {
   status: VoiceStatus;
   micLevel: number;
   fallbackMessage: string | null;
-  disabled?: boolean;
-  onStart: () => void;
   onEnd: () => void;
 }) {
   const active =
@@ -46,19 +42,7 @@ export function VoiceControls({
     );
   }
 
-  if (!active) {
-    return (
-      <button
-        type="button"
-        onClick={onStart}
-        disabled={disabled}
-        className="inline-flex min-h-11 items-center gap-2 self-start rounded-full border border-hairline-strong bg-surface/95 px-4 py-2.5 text-sm font-semibold text-forest shadow-sm transition-colors hover:bg-mint disabled:cursor-not-allowed disabled:opacity-45"
-      >
-        <MicrophoneIcon aria-hidden="true" />
-        {VOICE_COPY.start}
-      </button>
-    );
-  }
+  if (!active) return null;
 
   const level = status === "speaking" ? 0.3 : micLevel;
   return (

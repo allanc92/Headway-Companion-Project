@@ -13,8 +13,8 @@ import { MIRROR_READY_MARKER } from "./types";
  */
 export function companionGreeting(voiceEnabled: boolean): string {
   const invitation = voiceEnabled
-    ? "- Then gently invite them in: say you'd like to understand how they're feeling. Let them know they can chat about it here, or talk it through by pressing the Talk to Huey button."
-    : "- Then gently invite them in: say you'd like to understand how they're feeling and let them know they can chat about it here. Do not mention voice, a microphone, or a Talk to Huey button.";
+    ? "- Then gently invite them in: say you'd like to understand how they're feeling. Let them know they can chat about it here, or talk it through using the voice button in the message box."
+    : "- Then gently invite them in: say you'd like to understand how they're feeling and let them know they can chat about it here. Do not mention voice, a microphone, or a voice control.";
 
   return `OPENING GREETING (this turn only)
 This is the very first thing you say — the person has just arrived and has not spoken yet. There is no message to respond to; you are simply opening the door. Say it warmly, like a real person saying hello, not like a script being read aloud.
