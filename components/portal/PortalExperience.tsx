@@ -9,7 +9,6 @@ import {
 } from "react";
 import Link from "next/link";
 import { Wordmark } from "@/components/home/Wordmark";
-import { ProviderAvatar } from "@/components/intake/ProviderAvatar";
 import { SafetyOverlay } from "@/components/intake/SafetyOverlay";
 import {
   ArrowIcon,
@@ -23,8 +22,8 @@ import {
 } from "@/components/ui/icons";
 import { HELP_LABEL } from "@/lib/copy";
 import { loadIntention } from "@/lib/intention-store";
-import { NO_INSURANCE_VALUES, PROVIDERS } from "@/lib/providers";
-import type { Booking, Intention, Provider } from "@/lib/types";
+import { PROVIDERS } from "@/lib/providers";
+import type { Booking, Intention } from "@/lib/types";
 
 type PortalSnapshot =
   | { loaded: false; intention: null }
@@ -124,12 +123,14 @@ function PortalHeader({
 }
 
 function PortalCard({
+  id,
   title,
   eyebrow,
   icon,
   children,
   className = "",
 }: {
+  id?: string;
   title: string;
   eyebrow: string;
   icon: ReactNode;
@@ -138,17 +139,19 @@ function PortalCard({
 }) {
   return (
     <article
-      className={`rounded-[1.75rem] border border-portal-line bg-surface/90 p-5 shadow-[0_22px_60px_rgba(29,85,61,0.075)] sm:p-6 ${className}`}
+      id={id}
+      tabIndex={id ? -1 : undefined}
+      className={`rounded-[1.25rem] border border-hairline-strong/75 bg-air/85 p-5 shadow-[0_14px_40px_rgba(29,85,61,0.06)] focus:outline-none focus-visible:ring-2 focus-visible:ring-forest/60 ${id ? "scroll-mt-24" : ""} ${className}`}
     >
       <header className="flex items-start gap-3">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-mint-soft text-forest">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-mint-soft text-forest">
           {icon}
         </span>
         <div>
           <p className="text-[0.68rem] font-semibold uppercase tracking-[0.17em] text-ink-muted">
             {eyebrow}
           </p>
-          <h2 className="mt-1 font-serif text-[1.35rem] leading-tight text-ink">
+          <h2 className="mt-1 font-serif text-xl leading-tight text-ink">
             {title}
           </h2>
         </div>
@@ -348,7 +351,7 @@ function AppointmentsCard({
   providerName,
 }: {
   booking: Booking | undefined;
-  providerName: string;
+  providerName: string | undefined;
 }) {
   const selectedDate = parseBookingDate(booking?.date);
   const monthLabel = selectedDate
@@ -367,13 +370,18 @@ function AppointmentsCard({
     : booking?.dayLabel;
 
   return (
-    <PortalCard title="Appointments" eyebrow="Your calendar" icon={<CalendarGlyph />}>
+    <PortalCard
+      id="appointment-details"
+      title="Appointments"
+      eyebrow="Your calendar"
+      icon={<CalendarGlyph />}
+    >
       {selectedDate ? (
-        <div className="mt-5 rounded-2xl border border-portal-line/65 bg-air/55 p-3">
+        <div className="mt-4 rounded-xl border border-hairline-strong/75 bg-surface/75 p-3">
           <p className="px-1 font-serif text-lg text-ink">{monthLabel}</p>
           <table className="mt-2 w-full table-fixed text-center">
             <caption className="sr-only">
-              {monthLabel} calendar with the simulated session selected
+              {monthLabel} calendar with the session selected
             </caption>
             <thead>
               <tr>
@@ -403,7 +411,7 @@ function AppointmentsCard({
                           <span
                             aria-current={selected ? "date" : undefined}
                             aria-label={
-                              selected ? `${fullDate}, simulated session selected` : undefined
+                              selected ? `${fullDate}, session selected` : undefined
                             }
                             className={`mx-auto flex h-6 w-6 items-center justify-center rounded-full ${
                               selected
@@ -424,21 +432,26 @@ function AppointmentsCard({
         </div>
       ) : (
         <div className="mt-5 rounded-2xl border border-dashed border-portal-line bg-air/45 p-4 text-sm leading-relaxed text-ink-muted">
-          No simulated session has been added to this Intention.
+          <p>No session has been added yet.</p>
+          {providerName && (
+            <p className="mt-2 font-medium text-ink">With {providerName}</p>
+          )}
         </div>
       )}
 
       {booking && (
         <div className="mt-4 border-t border-portal-line/50 pt-4">
           <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-forest">
-            Next session · simulated
+            Next session
           </p>
           <p className="mt-2 font-medium text-ink">{fullDate}</p>
           <p className="mt-0.5 text-sm text-ink-muted">
             {booking.time}
             {booking.modality ? ` · ${booking.modality}` : ""}
           </p>
-          <p className="mt-2 text-sm text-ink-muted">With {providerName}</p>
+          {providerName && (
+            <p className="mt-2 text-sm text-ink-muted">With {providerName}</p>
+          )}
         </div>
       )}
     </PortalCard>
@@ -449,213 +462,128 @@ function BillingCard() {
   return (
     <PortalCard
       title="Billing"
-      eyebrow="Prototype boundary"
+      eyebrow="Account"
       icon={<CardIcon />}
-      className="mt-auto"
+      className="flex h-full flex-col"
     >
-      <div className="mt-5 rounded-2xl bg-cream/80 p-4">
-        <p className="font-medium text-ink">No billing is connected.</p>
-        <p className="mt-2 text-sm leading-relaxed text-ink-muted">
-          This simulated session creates no charge, balance, claim, or payment action.
+      <div className="mt-4 flex flex-1 flex-col justify-center rounded-xl bg-surface/75 p-4">
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-ink-muted">
+          Current balance
         </p>
+        <div className="mt-2 flex items-end justify-between gap-3">
+          <p className="font-serif text-2xl text-ink">$0.00</p>
+          <span className="rounded-full bg-mint-soft px-2.5 py-1 text-xs font-medium text-forest">
+            All clear
+          </span>
+        </div>
       </div>
     </PortalCard>
   );
 }
 
-function JourneyCard({
-  intention,
-  provider,
-  providerName,
-}: {
-  intention: Intention;
-  provider: Provider | null;
-  providerName: string;
-}) {
-  const booking = intention.booking;
-  const hasProviderChoice = Boolean(
-    provider || intention.chosenProviderId || booking?.providerId,
-  );
+function NextActionCard() {
+  const steps = [
+    {
+      title: "Review what comes next",
+      detail: "Use this itinerary to orient before your next visit.",
+    },
+    {
+      title: "Choose what to carry",
+      detail: "Decide which parts of your context still feel useful.",
+    },
+    {
+      title: "Prepare your questions",
+      detail: "Keep anything you may want to ask in your own notes.",
+    },
+  ] as const;
 
   return (
-    <article className="relative overflow-hidden rounded-[2rem] border border-portal-line bg-surface/95 p-6 shadow-[0_28px_80px_rgba(29,85,61,0.1)] sm:p-8">
-      <div
-        aria-hidden="true"
-        className="absolute -right-16 -top-20 h-52 w-52 rounded-full bg-sky/50 blur-2xl"
-      />
-      <div
-        aria-hidden="true"
-        className="absolute -left-20 top-44 h-56 w-56 rounded-full bg-mint-soft/60 blur-3xl"
-      />
-
-      <header className="relative">
-        <div className="flex items-center gap-2 text-forest">
-          <SparkIcon width={18} height={18} />
-          <p className="text-[0.7rem] font-semibold uppercase tracking-[0.18em]">
-            Your Journey
-          </p>
-        </div>
-        <h2 className="mt-3 max-w-xl font-serif text-[clamp(2rem,4.2vw,3.4rem)] leading-[1.02] tracking-[-0.025em] text-ink">
-          What you chose, held in one place.
-        </h2>
-        <p className="mt-4 max-w-2xl text-[1.02rem] leading-relaxed text-ink-muted">
-          Your care home carries forward the understanding you shaped during intake,
-          without asking you to start over.
-        </p>
-      </header>
-
-      <div className="relative mt-7 space-y-4">
-        <section
-          id="your-intention"
-          tabIndex={-1}
-          className="scroll-mt-24 rounded-3xl border border-portal-line/70 bg-air-wash/90 p-5 focus:outline-none focus-visible:ring-2 focus-visible:ring-forest/60"
-        >
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-ink-muted">
-                Shared priorities
-              </p>
-              <h2 className="mt-1 font-serif text-xl text-ink">Your Intention</h2>
-            </div>
-            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-mint-soft text-forest">
-              <CheckIcon width={17} height={17} />
-            </span>
-          </div>
-          {intention.reflection && (
-            <p className="mt-3 text-sm leading-relaxed text-ink-muted">
-              {intention.reflection}
-            </p>
-          )}
-          {intention.priorities.length > 0 ? (
-            <ul className="mt-4 flex flex-wrap gap-2">
-              {intention.priorities.map((priority) => (
-                <li
-                  key={priority.id}
-                  className="rounded-full border border-portal-line/70 bg-mint-soft/65 px-3 py-1.5 text-xs font-medium text-forest-700"
-                >
-                  {priority.title || "Untitled priority"}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="mt-3 text-sm text-ink-muted">
-              No shared priorities are saved yet.
-            </p>
-          )}
-        </section>
-
-        <section className="rounded-3xl border border-portal-line/70 bg-mint-soft/50 p-5">
-          <div className="flex items-center gap-4">
-            {provider ? (
-              <ProviderAvatar
-                name={provider.name}
-                seed={provider.photoSeed}
-                className="h-20 w-16 shrink-0 rounded-2xl"
-              />
-            ) : (
-              <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-forest text-mint">
-                <FeatherIcon width={24} height={24} />
-              </span>
-            )}
-            <div className="min-w-0">
-              <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-forest">
-                {hasProviderChoice
-                  ? "Therapist chosen · fictional"
-                  : "Therapist choice"}
-              </p>
-              <h2 className="mt-1 font-serif text-xl text-ink">{providerName}</h2>
-              {provider && (
-                <p className="text-sm text-ink-muted">
-                  {provider.title}
-                  {provider.pronouns ? ` · ${provider.pronouns}` : ""}
-                </p>
-              )}
-            </div>
-          </div>
-        </section>
-
-        <section
-          id="appointment-details"
-          tabIndex={-1}
-          className="scroll-mt-24 rounded-3xl border border-portal-line/70 bg-sky/40 p-5 focus:outline-none focus-visible:ring-2 focus-visible:ring-forest/60"
-        >
-          <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-sky-ink">
-            {booking ? "Session booked · simulated" : "Session"}
-          </p>
-          {booking ? (
-            <div className="mt-2 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
-              <div>
-                <h2 className="font-serif text-xl text-ink">{booking.dayLabel}</h2>
-                <p className="mt-1 text-sm text-ink-muted">
-                  {booking.time}
-                  {booking.modality ? ` · ${booking.modality}` : ""}
-                </p>
-              </div>
-              <p className="text-xs leading-relaxed text-ink-muted">
-                Saved locally · no real booking
-              </p>
-            </div>
-          ) : (
-            <p className="mt-2 text-sm leading-relaxed text-ink-muted">
-              No simulated time is attached to this Intention.
-            </p>
-          )}
-        </section>
-
-        <section
-          id="onboarding-itinerary"
-          tabIndex={-1}
-          className="scroll-mt-24 rounded-3xl border border-forest bg-forest p-5 text-mint shadow-[0_18px_44px_rgba(20,96,59,0.18)] focus:outline-none focus-visible:ring-2 focus-visible:ring-sky focus-visible:ring-offset-2"
-        >
+    <article
+      id="onboarding-itinerary"
+      tabIndex={-1}
+      className="flex h-full scroll-mt-24 flex-col overflow-hidden rounded-[1.25rem] border border-hairline-strong/80 bg-mint-soft/75 p-5 text-ink shadow-[0_14px_40px_rgba(29,85,61,0.07)] focus:outline-none focus-visible:ring-2 focus-visible:ring-forest/60 sm:p-6"
+    >
+      <div className="flex h-full flex-col">
+        <header>
           <div className="flex items-center justify-between gap-4">
-            <p className="text-[0.68rem] font-semibold uppercase tracking-[0.17em] text-mint/80">
-              Next action
-            </p>
-            <span className="rounded-full bg-mint/10 px-2.5 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.12em]">
+            <div className="flex items-center gap-2 text-forest">
+              <SparkIcon width={18} height={18} />
+              <p className="text-[0.7rem] font-semibold uppercase tracking-[0.18em]">
+                Next action
+              </p>
+            </div>
+            <span className="rounded-full bg-surface/75 px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-forest">
               Ready when you are
             </span>
           </div>
-          <h2 className="mt-2 font-serif text-2xl">Your onboarding itinerary</h2>
-          <p className="mt-2 text-sm leading-relaxed text-mint/80">
+          <h2 className="mt-4 max-w-xl font-serif text-[clamp(2rem,3.5vw,2.75rem)] leading-[1.02] tracking-[-0.025em]">
+            Your onboarding itinerary
+          </h2>
+          <p className="mt-2.5 max-w-xl text-sm leading-relaxed text-ink-muted sm:text-base">
             A short, optional way to arrive with the context you already created.
           </p>
-          <ol className="mt-5 space-y-3">
-            {[
-              "Review your fictional provider and simulated appointment details.",
-              "Revisit your Intention and the priorities you want to carry forward.",
-              "Bring any personal notes you would like to remember for a future real visit.",
-            ].map((step, index) => (
-              <li key={step} className="flex gap-3 text-sm leading-relaxed">
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-mint text-xs font-semibold text-forest">
-                  {index + 1}
-                </span>
-                <span>{step}</span>
-              </li>
-            ))}
-          </ol>
-        </section>
+        </header>
+
+        <ol className="mt-auto grid gap-3 pt-6 sm:grid-cols-3">
+          {steps.map((step, index) => (
+            <li
+              key={step.title}
+              className="rounded-xl border border-hairline-strong/75 bg-surface/75 p-3.5"
+            >
+              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-mint-200 text-xs font-semibold text-forest">
+                {index + 1}
+              </span>
+              <h3 className="mt-2.5 text-sm font-semibold leading-snug">{step.title}</h3>
+              <p className="mt-1.5 text-xs leading-relaxed text-ink-muted">
+                {step.detail}
+              </p>
+            </li>
+          ))}
+        </ol>
+
+        <a
+          href="#take-home-assignment"
+          className="group mt-4 inline-flex self-start items-center gap-3 rounded-xl bg-forest px-4 py-3 text-sm font-semibold text-mint shadow-[0_8px_22px_rgba(20,96,59,0.16)] transition-colors hover:bg-forest-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-forest focus-visible:ring-offset-2"
+        >
+          Prepare for your first session
+          <ArrowIcon
+            width={17}
+            height={17}
+            aria-hidden="true"
+            className="transition-transform group-hover:translate-x-0.5"
+          />
+        </a>
       </div>
     </article>
   );
 }
 
-function BenefitsCard({ insurance }: { insurance: string }) {
-  const planShared = !NO_INSURANCE_VALUES.includes(insurance);
+function BenefitsCard() {
+  const remainingSessions = 8;
+  const totalSessions = 12;
 
   return (
-    <PortalCard title="Benefits" eyebrow="Illustrative only" icon={<ShieldIcon />}>
-      <div className="mt-5 rounded-2xl bg-sky/40 p-4">
+    <PortalCard title="Benefits" eyebrow="Coverage" icon={<ShieldIcon />}>
+      <div className="mt-4 rounded-xl bg-surface/75 p-4">
         <p className="text-xs font-semibold uppercase tracking-[0.14em] text-sky-ink">
-          Plan shared during intake
+          Remaining sessions
         </p>
-        <p className="mt-2 font-medium text-ink">
-          {planShared ? insurance : "No insurance plan selected"}
-        </p>
+        <div className="mt-2 flex items-end justify-between gap-3">
+          <p className="font-serif text-3xl leading-none text-ink">{remainingSessions}</p>
+          <p className="text-xs text-ink-muted">of {totalSessions} this year</p>
+        </div>
+        <div
+          role="progressbar"
+          aria-label={`${remainingSessions} of ${totalSessions} sessions remaining`}
+          aria-valuemin={0}
+          aria-valuemax={totalSessions}
+          aria-valuenow={remainingSessions}
+          className="mt-4 h-2 overflow-hidden rounded-full bg-sky/70"
+        >
+          <span className="block h-full w-2/3 rounded-full bg-forest" />
+        </div>
+        <p className="mt-3 text-xs text-ink-muted">Renews January 1</p>
       </div>
-      <p className="mt-4 text-sm leading-relaxed text-ink-muted">
-        This prototype does not verify benefits, eligibility, network status, coverage,
-        or costs.
-      </p>
     </PortalCard>
   );
 }
@@ -666,12 +594,11 @@ function FormsCard() {
       title="Forms & patient files"
       eyebrow="Your library"
       icon={<FileGlyph />}
-      className="mt-auto"
     >
-      <nav className="mt-5 space-y-2.5" aria-label="Patient file library">
+      <nav className="mt-4 space-y-2.5" aria-label="Patient file library">
         <a
           href="#onboarding-itinerary"
-          className="group block rounded-2xl border border-forest bg-mint-soft/75 p-4 transition-colors hover:bg-mint-soft focus:outline-none focus-visible:ring-2 focus-visible:ring-forest/55"
+          className="group block rounded-xl border border-forest/75 bg-mint-soft/75 p-3.5 transition-colors hover:bg-mint-soft focus:outline-none focus-visible:ring-2 focus-visible:ring-forest/55"
         >
           <span className="flex items-start justify-between gap-3">
             <span>
@@ -694,60 +621,81 @@ function FormsCard() {
           </span>
         </a>
 
-        {[
-          {
-            href: "#appointment-details",
-            label: "Appointment details",
-            detail: "Fictional provider and simulated time",
-          },
-          {
-            href: "#your-intention",
-            label: "Your Intention",
-            detail: "Reflection and shared priorities",
-          },
-        ].map((item) => (
-          <a
-            key={item.href}
-            href={item.href}
-            className="group flex items-center justify-between gap-3 rounded-2xl border border-portal-line/70 bg-air-wash/75 px-4 py-3 transition-colors hover:border-forest/60 hover:bg-mint-soft/45 focus:outline-none focus-visible:ring-2 focus-visible:ring-forest/55"
-          >
-            <span>
-              <span className="block text-sm font-medium text-ink">{item.label}</span>
-              <span className="mt-0.5 block text-xs text-ink-muted">{item.detail}</span>
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-hairline-strong/75 bg-surface/75 px-3.5 py-3">
+          <span>
+            <span className="block text-sm font-medium text-ink">EHR Files</span>
+            <span className="mt-0.5 block text-xs text-ink-muted">
+              2 care documents
             </span>
-            <ArrowIcon
-              width={16}
-              height={16}
-              aria-hidden="true"
-              className="shrink-0 text-ink-muted transition-transform group-hover:translate-x-0.5"
-            />
-          </a>
-        ))}
+          </span>
+          <span
+            aria-label="2 files"
+            className="flex h-7 min-w-7 items-center justify-center rounded-full bg-mint-soft px-2 text-xs font-semibold text-forest"
+          >
+            2
+          </span>
+        </div>
+
+        <a
+          href="#your-notes"
+          className="group flex items-center justify-between gap-3 rounded-xl border border-hairline-strong/75 bg-surface/75 px-3.5 py-3 transition-colors hover:border-forest/60 hover:bg-mint-soft/45 focus:outline-none focus-visible:ring-2 focus-visible:ring-forest/55"
+        >
+          <span>
+            <span className="block text-sm font-medium text-ink">Your Notes</span>
+            <span className="mt-0.5 block text-xs text-ink-muted">
+              A prompt from your saved Intention
+            </span>
+          </span>
+          <ArrowIcon
+            width={16}
+            height={16}
+            aria-hidden="true"
+            className="shrink-0 text-ink-muted transition-transform group-hover:translate-x-0.5"
+          />
+        </a>
+
+        <a
+          href="#take-home-assignment"
+          className="group flex items-center justify-between gap-3 rounded-xl border border-forest/35 bg-mint-soft/75 px-3.5 py-3 text-forest transition-colors hover:border-forest/55 hover:bg-mint-soft focus:outline-none focus-visible:ring-2 focus-visible:ring-forest/60"
+        >
+          <span>
+            <span className="block text-sm font-semibold">Take-home assignment</span>
+            <span className="mt-0.5 block text-xs text-ink-muted">
+              Open your reflection prompt
+            </span>
+          </span>
+          <ArrowIcon
+            width={17}
+            height={17}
+            aria-hidden="true"
+            className="shrink-0 transition-transform group-hover:translate-x-0.5"
+          />
+        </a>
       </nav>
-      <p className="mt-4 text-xs leading-relaxed text-ink-muted">
-        These are in-page prototype artifacts. No forms or files are submitted or shared.
-      </p>
     </PortalCard>
   );
 }
 
 function NotesCard({ priority }: { priority: string | undefined }) {
   return (
-    <PortalCard title="Your Notes" eyebrow="For your own words" icon={<PencilIcon />}>
-      <p className="mt-4 text-sm leading-relaxed text-ink-muted">
-        A quiet place to remember what you may want to bring into a future session.
-      </p>
-      {priority && (
-        <div className="mt-4 rounded-2xl border border-portal-line/65 bg-cream/75 p-4">
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-ink-muted">
-            A prompt from your Intention
-          </p>
-          <p className="mt-2 font-serif text-lg leading-snug text-ink">{priority}</p>
-        </div>
-      )}
-      <p className="mt-4 text-xs leading-relaxed text-ink-muted">
-        Note-taking is not enabled, so nothing new is stored here.
-      </p>
+    <PortalCard
+      id="your-notes"
+      title="Your Notes"
+      eyebrow="For your own words"
+      icon={<PencilIcon />}
+    >
+      <div
+        id="take-home-assignment"
+        tabIndex={-1}
+        className="mt-4 scroll-mt-24 rounded-xl border border-hairline-strong/75 bg-surface/75 p-4 focus:outline-none focus-visible:ring-2 focus-visible:ring-forest/60"
+      >
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-ink-muted">
+          A prompt from your Intention
+        </p>
+        <p className="mt-2 font-serif text-lg leading-snug text-ink">
+          {priority ?? "What would you like to carry into your next session?"}
+        </p>
+      </div>
     </PortalCard>
   );
 }
@@ -756,24 +704,20 @@ function HueyHomeCard() {
   return (
     <PortalCard
       title="Huey's Home"
-      eyebrow="Companion dock"
+      eyebrow="Companion"
       icon={<FeatherIcon />}
-      className="bg-air/75"
+      className="flex h-full flex-col"
     >
-      <div className="mt-4 flex items-center gap-3 rounded-2xl border border-portal-line/70 bg-surface/80 p-3.5">
+      <div className="mt-4 flex flex-1 items-center gap-3 rounded-xl border border-hairline-strong/75 bg-surface/75 p-3.5">
         <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-forest text-mint">
           <FeatherIcon width={19} height={19} />
           <span className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full border-2 border-surface bg-feather" />
         </span>
         <div>
-          <p className="text-sm font-medium text-ink">Huey is resting here.</p>
-          <p className="mt-0.5 text-xs text-ink-muted">Quiet, present, and bounded.</p>
+          <p className="text-sm font-medium text-ink">Huey is here.</p>
+          <p className="mt-0.5 text-xs text-ink-muted">Ready when you are.</p>
         </div>
       </div>
-      <p className="mt-4 text-sm leading-relaxed text-ink-muted">
-        Conversation history is not saved or reopened from this portal, so this dock does
-        not start a second chat.
-      </p>
     </PortalCard>
   );
 }
@@ -836,8 +780,7 @@ function PortalHome({ intention }: { intention: Intention }) {
   const booking = intention.booking;
   const providerId = intention.chosenProviderId ?? booking?.providerId;
   const provider = PROVIDERS.find((item) => item.id === providerId) ?? null;
-  const providerName =
-    provider?.name ?? booking?.providerName ?? "No fictional therapist selected yet";
+  const providerName = provider?.name ?? booking?.providerName;
 
   return (
     <main className="mx-auto max-w-[88rem] px-5 pb-10 pt-10 sm:px-7 sm:pb-14 sm:pt-14">
@@ -850,8 +793,8 @@ function PortalHome({ intention }: { intention: Intention }) {
             A little more room for what comes next.
           </h1>
           <p className="mt-5 max-w-2xl text-base leading-relaxed text-ink-muted sm:text-lg">
-            Your saved choices have somewhere to breathe. Review your journey, orient to
-            the simulated session, and carry forward only what feels useful.
+            Your saved choices have somewhere to breathe. Review what comes next, orient
+            to your next session, and carry forward only what feels useful.
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2 rounded-full border border-portal-line bg-surface/75 px-4 py-2 text-xs font-medium text-ink-muted shadow-[0_10px_30px_rgba(29,85,61,0.06)]">
@@ -860,25 +803,21 @@ function PortalHome({ intention }: { intention: Intention }) {
         </div>
       </header>
 
-      <div className="mt-9 grid items-stretch gap-5 lg:grid-cols-[minmax(12rem,0.8fr)_minmax(28rem,1.55fr)_minmax(12rem,0.8fr)] lg:gap-6">
+      <div className="mt-8 grid items-stretch gap-5 lg:grid-cols-[minmax(12rem,0.8fr)_minmax(28rem,1.55fr)_minmax(12rem,0.8fr)]">
         <aside
           aria-label="Appointments and billing"
-          className="order-2 flex min-w-0 flex-col gap-5 lg:order-1"
+          className="order-2 grid min-w-0 grid-rows-[auto_1fr] gap-5 lg:order-1"
         >
           <AppointmentsCard booking={booking} providerName={providerName} />
           <BillingCard />
         </aside>
 
         <section
-          aria-label="Your care journey"
-          className="order-1 flex min-w-0 flex-col gap-5 lg:order-2"
+          aria-label="Your next steps"
+          className="order-1 grid min-w-0 grid-rows-[1fr_auto] gap-5 lg:order-2"
         >
-          <JourneyCard
-            intention={intention}
-            provider={provider}
-            providerName={providerName}
-          />
-          <div className="mt-auto grid gap-5 md:grid-cols-2">
+          <NextActionCard />
+          <div className="grid gap-5 md:grid-cols-2">
             <NotesCard priority={intention.priorities[0]?.title} />
             <HueyHomeCard />
           </div>
@@ -886,9 +825,9 @@ function PortalHome({ intention }: { intention: Intention }) {
 
         <aside
           aria-label="Benefits and patient files"
-          className="order-3 flex min-w-0 flex-col gap-5"
+          className="order-3 grid min-w-0 grid-rows-[auto_1fr] gap-5"
         >
-          <BenefitsCard insurance={intention.context.insurance} />
+          <BenefitsCard />
           <FormsCard />
         </aside>
       </div>
