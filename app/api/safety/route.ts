@@ -45,7 +45,6 @@ export async function POST(req: Request): Promise<Response> {
       schema: safetySchema,
       system: SAFETY_SYSTEM,
       prompt: `Prior context (may be empty):\n${context}\n\nClassify ONLY this newest patient message:\n"""${text}"""`,
-      temperature: 0,
     });
     return Response.json(object);
   } catch (err) {
